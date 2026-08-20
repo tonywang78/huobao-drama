@@ -321,9 +321,41 @@
             <input v-model.number="cfgForm.priority" class="input" type="number" min="0" max="999" />
             <span class="field-hint">数值越高越优先。工作台默认会优先使用同类型里优先级最高的启用配置。</span>
           </label>
-          <label class="field"><span class="field-label">API Key</span><input v-model="cfgForm.api_key" class="input" type="password" placeholder="sk-..." /></label>
+          <label class="field"><span class="field-label">API Key</span><input v-model="cfgForm.api_key" class="input" type="password" :placeholder="cfgForm.provider === 'comfyui' ? '可选，反向代理鉴权时填写' : 'sk-...'" /></label>
           <label class="field"><span class="field-label">Base URL</span><input v-model="cfgForm.base_url" class="input" placeholder="https://..." /></label>
           <label class="field"><span class="field-label">模型（逗号分隔）</span><input v-model="cfgForm.modelStr" class="input" placeholder="model-name" /></label>
+          <div v-if="showComfyWorkflowEditor" class="field comfy-workflow-field">
+            <div class="field-label-row">
+              <span class="field-label">ComfyUI Workflow API JSON</span>
+              <div class="comfy-workflow-actions">
+                <input
+                  ref="comfyWorkflowFileRef"
+                  type="file"
+                  accept=".json,application/json"
+                  class="comfy-workflow-file-input"
+                  @change="onComfyWorkflowFileChange"
+                />
+                <button type="button" class="btn btn-ghost btn-sm" @click="pickComfyWorkflowFile">选择文件</button>
+                <button type="button" class="btn btn-ghost btn-sm" :disabled="comfyWorkflowLoading" @click="loadDefaultComfyWorkflow">
+                  {{ comfyWorkflowLoading ? '加载中…' : '载入默认' }}
+                </button>
+              </div>
+            </div>
+            <textarea
+              v-model="cfgForm.workflowApiStr"
+              class="input textarea mono"
+              rows="8"
+              placeholder="留空则使用内置默认 API workflow；可选择本地 .json，或粘贴 ComfyUI「Save (API Format)」导出内容"
+            />
+            <span class="field-hint">仅支持 API 格式（非完整 UI JSON）。推荐用下方「解析 + 绑定」，不必手写占位符。</span>
+            <ComfyWorkflowBindings
+              ref="comfyBindingsRef"
+              v-model="cfgForm.bindings"
+              :workflow-json="cfgForm.workflowApiStr"
+              :service-type="cfgForm.service_type"
+              @parsed="onComfyParsed"
+            />
+          </div>
           <div v-if="cfgTestResult" class="test-result" :class="{ ok: cfgTestResult.reachable, bad: !cfgTestResult.reachable }">
             <div class="test-result-head">
               <span class="tag" :class="cfgTestResult.reachable ? 'tag-success' : 'tag-error'">{{ cfgTestResult.status || 'ERROR' }}</span>
@@ -432,6 +464,7 @@
 <script setup>
 import { Plus, Pencil, Trash2, FileText, ChevronDown, Check, Loader2, Bot, Cpu, Sparkles, Palette, ExternalLink, Star } from 'lucide-vue-next'
 import BaseSelect from '~/components/BaseSelect.vue'
+import ComfyWorkflowBindings from '~/components/ComfyWorkflowBindings.vue'
 import { toast } from 'vue-sonner'
 import { aiConfigAPI, promptAPI, skillsAPI, stylePresetAPI } from '~/composables/useApi'
 import brandLogo from '~/assets/huobao-logo.png'
@@ -459,9 +492,9 @@ const cfgTesting = ref(false)
 const cfgTestResult = ref(null)
 const huobaoApiKey = ref('')
 const huobaoSaving = ref(false)
-const cfgForm = reactive({ name: '', provider: '', api_key: '', base_url: '', modelStr: '', service_type: 'text', priority: 0 })
+const cfgForm = reactive({ name: '', provider: '', api_key: '', base_url: '', modelStr: '', service_type: 'text', priority: 0, workflowApiStr: '', bindings: {} })
 const serviceTypes = [{ type: 'text', label: '文本' }, { type: 'image', label: '图片' }, { type: 'video', label: '视频' }]
-const providers = ['gemini', 'openai', 'volcengine', 'minimax']
+const providers = ['gemini', 'openai', 'volcengine', 'minimax', 'comfyui']
 const providerSelectOptions = computed(() => providers.map(p => ({ label: p, value: p })))
 const serviceMeta = {
   text: { label: '文本', desc: '剧本改写、角色场景提取、分镜拆解等 Agent 文本能力' },
@@ -476,10 +509,12 @@ const providerPresets = {
   image: {
     gemini: { label: 'Gemini 官方', baseUrl: 'https://generativelanguage.googleapis.com', models: ['gemini-3-pro-image', 'gemini-3.1-flash-image'] },
     openai: { label: 'OpenAI 官方', baseUrl: 'https://api.openai.com', models: ['gpt-image-2'] },
+    comfyui: { label: 'ComfyUI 本地', baseUrl: 'http://127.0.0.1:8188', models: ['comfyui-default'] },
   },
   video: {
     volcengine: { label: 'Seedance 2.0 官方', baseUrl: 'https://ark.cn-beijing.volces.com', models: ['doubao-seedance-2-0-fast-260128', 'doubao-seedance-2-0-260128', 'doubao-seedance-2-0-mini-260615'] },
     minimax: { label: 'MiniMax H3 官方', baseUrl: 'https://api.minimaxi.com', models: ['MiniMax-H3'] },
+    comfyui: { label: 'ComfyUI 本地', baseUrl: 'http://127.0.0.1:8188', models: ['comfyui-default'] },
   },
 }
 const huobaoQuickConfigs = [
@@ -505,6 +540,112 @@ function applyProviderPreset(type, provider) {
   cfgForm.base_url = preset.baseUrl
   cfgForm.modelStr = preset.models.join(', ')
   cfgForm.name = `${preset.label}-${serviceMeta[type].label}`
+  if (provider !== 'comfyui') {
+    cfgForm.workflowApiStr = ''
+    cfgForm.bindings = {}
+  }
+}
+
+const showComfyWorkflowEditor = computed(() =>
+  cfgForm.provider === 'comfyui' && (cfgForm.service_type === 'image' || cfgForm.service_type === 'video'),
+)
+const comfyWorkflowLoading = ref(false)
+const comfyBindingsRef = ref(null)
+const comfyWorkflowFileRef = ref(null)
+
+function workflowApiFromSettings(settings) {
+  const api = settings?.workflowApi
+  if (!api || typeof api !== 'object') return ''
+  try {
+    return JSON.stringify(api, null, 2)
+  } catch {
+    return ''
+  }
+}
+
+function bindingsFromSettings(settings) {
+  const b = settings?.bindings
+  if (!b || typeof b !== 'object') return {}
+  const out = {}
+  for (const [k, v] of Object.entries(b)) {
+    if (v?.nodeId && v?.input) out[k] = { nodeId: String(v.nodeId), input: String(v.input) }
+  }
+  return out
+}
+
+function buildSettingsPayload() {
+  if (!showComfyWorkflowEditor.value) return undefined
+  const raw = cfgForm.workflowApiStr.trim()
+  const bindings = cfgForm.bindings && typeof cfgForm.bindings === 'object' ? cfgForm.bindings : {}
+  if (!raw) {
+    return {
+      workflowApi: null,
+      bindings: Object.keys(bindings).length ? bindings : {},
+    }
+  }
+  try {
+    return {
+      workflowApi: JSON.parse(raw),
+      bindings,
+    }
+  } catch {
+    throw new Error('ComfyUI Workflow API JSON 不是合法 JSON')
+  }
+}
+
+function onComfyParsed({ pinCount }) {
+  if (pinCount > 0) toast.success(`已解析 ${pinCount} 个可绑定 Pin`)
+}
+
+/** 规范化为可提交的 API prompt 对象文本；拒绝 UI 导出 */
+function normalizeComfyWorkflowApiText(text) {
+  const parsed = JSON.parse(text)
+  if (Array.isArray(parsed?.nodes) || Array.isArray(parsed?.links)) {
+    throw new Error('这是 ComfyUI UI 格式，请用「Save (API Format)」再导入')
+  }
+  const workflow = parsed?.prompt && typeof parsed.prompt === 'object' && !Array.isArray(parsed.prompt)
+    ? parsed.prompt
+    : parsed
+  if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) {
+    throw new Error('根对象应为 ComfyUI API prompt 节点图')
+  }
+  return JSON.stringify(workflow, null, 2)
+}
+
+function pickComfyWorkflowFile() {
+  comfyWorkflowFileRef.value?.click?.()
+}
+
+async function onComfyWorkflowFileChange(ev) {
+  const input = ev?.target
+  const file = input?.files?.[0]
+  if (input) input.value = ''
+  if (!file) return
+  try {
+    const text = await file.text()
+    cfgForm.workflowApiStr = normalizeComfyWorkflowApiText(text)
+    await nextTick()
+    comfyBindingsRef.value?.parseAndGuess?.()
+    toast.success(`已导入 ${file.name}`)
+  } catch (e) {
+    toast.error(e.message || '读取 workflow 文件失败')
+  }
+}
+
+async function loadDefaultComfyWorkflow() {
+  if (!showComfyWorkflowEditor.value) return
+  comfyWorkflowLoading.value = true
+  try {
+    const data = await aiConfigAPI.comfyuiDefaultWorkflow(cfgForm.service_type)
+    cfgForm.workflowApiStr = JSON.stringify(data.workflow_api || {}, null, 2)
+    await nextTick()
+    comfyBindingsRef.value?.parseAndGuess?.()
+    toast.success('已载入默认 API workflow，并自动猜测绑定')
+  } catch (e) {
+    toast.error(e.message)
+  } finally {
+    comfyWorkflowLoading.value = false
+  }
 }
 
 async function loadCfgs() { try { cfgs.value = await aiConfigAPI.list() } catch (e) { toast.error(e.message) } }
@@ -566,7 +707,7 @@ async function applyHuobaoQuickConfig() {
 function startAddCfg(t) {
   cfgEditId.value = null
   cfgTestResult.value = null
-  Object.assign(cfgForm, { name: '', provider: '', api_key: '', base_url: '', modelStr: '', service_type: t, priority: 0 })
+  Object.assign(cfgForm, { name: '', provider: '', api_key: '', base_url: '', modelStr: '', service_type: t, priority: 0, workflowApiStr: '', bindings: {} })
   const firstPreset = presetsByType(t)[0]
   if (firstPreset) applyProviderPreset(t, firstPreset.provider)
   cfgDialog.value = true
@@ -582,8 +723,15 @@ function startEditCfg(c) {
     modelStr: fmtModel(c.model),
     service_type: c.service_type,
     priority: c.priority ?? 0,
+    workflowApiStr: workflowApiFromSettings(c.settings),
+    bindings: bindingsFromSettings(c.settings),
   })
   cfgDialog.value = true
+  nextTick(() => {
+    if (cfgForm.provider === 'comfyui' && cfgForm.workflowApiStr.trim()) {
+      comfyBindingsRef.value?.parseWorkflow?.()
+    }
+  })
 }
 async function testCfgPayload(payload) {
   cfgTesting.value = true
@@ -620,8 +768,22 @@ async function saveCfg() {
   if (!cfgForm.provider) { toast.warning('选择服务商'); return }
   const models = cfgForm.modelStr.split(',').map(s => s.trim()).filter(Boolean)
   try {
-    if (cfgEditId.value) await aiConfigAPI.update(cfgEditId.value, { name: cfgForm.name, provider: cfgForm.provider, api_key: cfgForm.api_key, base_url: cfgForm.base_url, model: models, priority: cfgForm.priority })
-    else await aiConfigAPI.create({ service_type: cfgForm.service_type, provider: cfgForm.provider, name: cfgForm.name || `${cfgForm.provider}-${cfgForm.service_type}`, api_key: cfgForm.api_key, base_url: cfgForm.base_url, model: models, priority: cfgForm.priority })
+    const settings = buildSettingsPayload()
+    const payload = {
+      name: cfgForm.name,
+      provider: cfgForm.provider,
+      api_key: cfgForm.api_key,
+      base_url: cfgForm.base_url,
+      model: models,
+      priority: cfgForm.priority,
+    }
+    if (settings !== undefined) payload.settings = settings
+    if (cfgEditId.value) await aiConfigAPI.update(cfgEditId.value, payload)
+    else await aiConfigAPI.create({
+      service_type: cfgForm.service_type,
+      name: cfgForm.name || `${cfgForm.provider}-${cfgForm.service_type}`,
+      ...payload,
+    })
     cfgDialog.value = false; toast.success('已保存'); loadCfgs()
   } catch (e) { toast.error(e.message) }
 }
@@ -1172,6 +1334,12 @@ onMounted(() => { loadCfgs(); loadAgents(); loadAllSkills(); loadStylePresets() 
 .field { display: flex; flex-direction: column; gap: 5px; }
 .field-label { font-size: 12px; font-weight: 550; color: var(--text-1); }
 .field-hint { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+.field-label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.field-label-row .field-label { margin-bottom: 0; }
+.comfy-workflow-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.comfy-workflow-file-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
+.comfy-workflow-field .textarea { min-height: 180px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.45; }
+.comfy-ph { display: inline-block; margin: 0 4px 2px 0; padding: 1px 5px; border-radius: 4px; background: var(--bg-2, rgba(0,0,0,.06)); font-size: 10px; }
 .required { color: var(--error); }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 

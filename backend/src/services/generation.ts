@@ -198,14 +198,14 @@ async function processTask(id: number, config: AIConfig) {
     if (type === 'image') {
       const adapter = getImageAdapter(config.provider)
       const resolvedReferenceImages = await normalizeReferenceImages(params.referenceImages)
-      ;({ url, method, headers, body } = adapter.buildGenerateRequest(config, {
+      ;({ url, method, headers, body } = await Promise.resolve(adapter.buildGenerateRequest(config, {
         id: record.id,
         model: record.model,
         prompt: record.prompt,
         size: params.size,
         frameType: params.frameType,
         referenceImages: resolvedReferenceImages.length ? JSON.stringify(resolvedReferenceImages) : null,
-      }))
+      })))
     } else {
       const adapter = getVideoAdapter(config.provider)
       const resolvedImageUrl = await normalizeVideoReferenceUrl(params.imageUrl)
@@ -215,7 +215,7 @@ async function processTask(id: number, config: AIConfig) {
       // 参考视频/音频文件较大，不适合 dataURL 内联，需解析为公网可访问 URL
       const resolvedReferenceVideoUrls = resolvePublicMediaUrls(params.referenceVideoUrls, 'video')
       const resolvedReferenceAudioUrls = resolvePublicMediaUrls(params.referenceAudioUrls, 'audio')
-      ;({ url, method, headers, body } = adapter.buildGenerateRequest(config, {
+      ;({ url, method, headers, body } = await Promise.resolve(adapter.buildGenerateRequest(config, {
         id: record.id,
         model: record.model,
         prompt: record.prompt,
@@ -230,7 +230,7 @@ async function processTask(id: number, config: AIConfig) {
         duration: params.duration,
         aspectRatio: params.aspectRatio,
         resolution: params.resolution,
-      }))
+      })))
     }
 
     logTaskProgress(label, 'request', {
@@ -317,6 +317,8 @@ async function pollTask(record: SysTaskRecord, config: AIConfig, taskId: string)
   const profile = POLL_PROFILES[type]
   const adapter = type === 'image' ? getImageAdapter(config.provider) : getVideoAdapter(config.provider)
   const startedAt = Date.now()
+  /** Comfy 取消后 history={} 且不在队列；连续确认两次再失败，避免刚入队瞬间误判 */
+  let comfyGoneMisses = 0
 
   for (let i = 0; i < profile.attempts; i++) {
     if (profile.maxDurationMs && Date.now() - startedAt >= profile.maxDurationMs) {
@@ -346,7 +348,27 @@ async function pollTask(record: SysTaskRecord, config: AIConfig, taskId: string)
       const result = await resp.json() as any
 
       // 图片/视频 PollResponse 结构不同，这里统一按 any 取值后按 type 分支
-      const pollResp: any = adapter.parsePollResponse(result)
+      // 第三参 taskId 供 ComfyUI 等从 history 条目拼 /view URL
+      const pollResp: any = await Promise.resolve(adapter.parsePollResponse(result, config, taskId))
+
+      if (
+        config.provider === 'comfyui'
+        && pollResp.status === 'failed'
+        && /history 为空且不在队列中/.test(String(pollResp.error || ''))
+      ) {
+        comfyGoneMisses++
+        if (comfyGoneMisses < 2) {
+          logTaskWarn(label, 'poll-comfy-gone-soft', {
+            id: record.id,
+            taskId,
+            attempt: i + 1,
+            misses: comfyGoneMisses,
+          })
+          continue
+        }
+      } else {
+        comfyGoneMisses = 0
+      }
 
       if (pollResp.status === 'completed') {
         if (type === 'image') {
@@ -364,11 +386,16 @@ async function pollTask(record: SysTaskRecord, config: AIConfig, taskId: string)
               return
             }
           }
-        } else if (pollResp.videoUrl) {
+          await failTask(record.id, 'Poll completed without image URL')
+          return
+        }
+        if (pollResp.videoUrl) {
           logTaskSuccess(label, 'poll-complete', { id: record.id, taskId, videoUrl: pollResp.videoUrl })
           await handleVideoComplete(record, pollResp.videoUrl, null)
           return
         }
+        await failTask(record.id, 'Poll completed without video URL')
+        return
       }
       if (pollResp.status === 'failed') {
         // 上游明确失败（如内容审核拦截）属终态：立即落库，不重试不等待超时

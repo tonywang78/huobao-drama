@@ -489,7 +489,11 @@
                     :key="sb.id"
                     type="button"
                     class="storyboard-shot-card"
-                    :class="{ active: !sbSelectMode && selectedSb?.id === sb.id, 'is-selected': sbSelectMode && isSbSelected(sb.id) }"
+                    :class="{
+                      active: !sbSelectMode && selectedSb?.id === sb.id,
+                      'is-selected': sbSelectMode && isSbSelected(sb.id),
+                      'is-generating': isPendingVideo(sb.id),
+                    }"
                     @click="onShotCardClick(sb)"
                   >
                     <div class="storyboard-shot-head">
@@ -503,7 +507,10 @@
                       <div class="shot-num">#{{ String(i + 1).padStart(2, '0') }}</div>
                       <span class="storyboard-shot-chip">{{ sb.duration || 10 }}s</span>
                       <span v-if="getSceneName(sb)" class="shot-location"><MapPin :size="9" />{{ getSceneName(sb) }}</span>
-                      <span v-if="hasVid(sb)" class="shot-chip-video" title="已生成视频"><Play :size="8" />已出片</span>
+                      <span v-if="isPendingVideo(sb.id)" class="shot-chip-generating" :title="hasVid(sb) ? '正在重新生成视频' : '正在生成视频'">
+                        <Loader2 :size="8" class="animate-spin" />{{ hasVid(sb) ? '重新生成中' : '生成中' }}
+                      </span>
+                      <span v-else-if="hasVid(sb)" class="shot-chip-video" title="已生成视频"><Play :size="8" />已出片</span>
                     </div>
                     <div class="shot-body">
                       <div class="shot-desc" :class="{ 'is-empty': !sb.description }">{{ sb.description || '暂无画面描述' }}</div>
@@ -758,6 +765,7 @@
                   <div class="video-task-main">
                     <div class="video-task-line">
                       <strong class="video-task-name truncate">{{ task.title }}</strong>
+                      <span v-if="isPendingVideo(task.storyboard.id) && hasVid(task.storyboard)" class="video-task-regen-badge">重新生成中</span>
                     </div>
                     <div class="video-task-meta-line">
                       <span v-if="task.meta" class="video-task-loc truncate">{{ task.meta }}</span>
@@ -1652,6 +1660,8 @@ const pendingSceneImageIds = ref([])
 const pendingPropImageIds = ref([])
 const pendingVideoIds = ref([])
 const failedVideoMessages = ref({})
+/** 避免刷新恢复时对同一任务重复开多条轮询 */
+const videoPollInFlight = new Set()
 // 任务列表面板：顶栏按钮触发的右侧抽屉,按集聚合 sys_task + video_merges
 const genTasks = ref([])
 const genMerges = ref([])
@@ -1977,24 +1987,25 @@ function videoFailMessage(id) {
 }
 
 function videoTaskState(sb) {
-  if (hasVid(sb)) return 'done'
+  // 重新生成时旧视频仍在，必须优先显示 pending，否则刷新后/进行中会误显示「已完成」
   if (isPendingVideo(sb?.id)) return 'pending'
+  if (hasVid(sb)) return 'done'
   if (videoFailMessage(sb?.id)) return 'failed'
   return 'ready'
 }
 
 function videoTaskStatusLabel(sb) {
   const state = videoTaskState(sb)
+  if (state === 'pending') return hasVid(sb) ? '重新生成中' : '生成中'
   if (state === 'done') return '已完成'
-  if (state === 'pending') return '生成中'
   if (state === 'failed') return '失败'
   return '待生成'
 }
 
 function videoTaskActionLabel(sb) {
   const state = videoTaskState(sb)
+  if (state === 'pending') return '生成中…'
   if (state === 'done') return '重新生成'
-  if (state === 'pending') return '生成中'
   return '生成'
 }
 
@@ -2094,7 +2105,36 @@ async function loadGenTasks() {
     const data = await taskAPI.listByEpisode(epId.value)
     genTasks.value = data?.tasks || []
     genMerges.value = data?.merges || []
+    syncPendingVideosFromGenTasks()
   } catch { /* 静默失败,不打断其他刷新 */ }
+}
+
+/** 从服务端 processing 视频任务恢复 pending，并续上轮询（刷新后不丢状态） */
+function syncPendingVideosFromGenTasks() {
+  const processing = genTasks.value.filter((t) => {
+    const type = t.type || t.Type
+    const status = t.status || t.Status
+    const sbId = t.storyboard_id ?? t.storyboardId
+    return type === 'video' && (status === 'processing' || status === 'pending') && sbId
+  })
+
+  const fromServer = processing.map((t) => Number(t.storyboard_id ?? t.storyboardId)).filter(Boolean)
+  const stillLocal = pendingVideoIds.value.filter((id) => {
+    const tasks = genTasks.value.filter((t) =>
+      (t.type === 'video') && Number(t.storyboard_id ?? t.storyboardId) === Number(id),
+    )
+    if (!tasks.length) return true
+    const latest = tasks[0]
+    const st = latest.status || latest.Status
+    return st === 'processing' || st === 'pending'
+  })
+  pendingVideoIds.value = [...new Set([...stillLocal, ...fromServer])]
+
+  for (const t of processing) {
+    const sbId = Number(t.storyboard_id ?? t.storyboardId)
+    const taskId = t.id
+    if (sbId && taskId) pollVideoGeneration(taskId, sbId)
+  }
 }
 
 function stopGenTasksPolling() {
@@ -2115,21 +2155,26 @@ const genTaskFailedCount = computed(() =>
 )
 
 function genTaskTargetLabel(t) {
-  if (t.storyboard_id) {
-    const sb = sbs.value.find(x => x.id === t.storyboard_id)
-    return `分镜 #${sb?.storyboard_number ?? sb?.storyboardNumber ?? t.storyboard_id}`
+  const sbId = t.storyboard_id ?? t.storyboardId
+  if (sbId) {
+    const idx = sbs.value.findIndex((x) => x.id === sbId)
+    const n = idx >= 0 ? idx + 1 : sbId
+    return `分镜 #${String(n).padStart(2, '0')}`
   }
-  if (t.character_id) {
-    const c = chars.value.find(x => x.id === t.character_id)
-    return `角色 · ${c?.name || t.character_id}`
+  const characterId = t.character_id ?? t.characterId
+  if (characterId) {
+    const c = chars.value.find(x => x.id === characterId)
+    return `角色 · ${c?.name || characterId}`
   }
-  if (t.scene_id) {
-    const s = scenes.value.find(x => x.id === t.scene_id)
-    return `场景 · ${s?.location || t.scene_id}`
+  const sceneId = t.scene_id ?? t.sceneId
+  if (sceneId) {
+    const s = scenes.value.find(x => x.id === sceneId)
+    return `场景 · ${s?.location || sceneId}`
   }
-  if (t.prop_id) {
-    const p = propItems.value.find(x => x.id === t.prop_id)
-    return `道具 · ${p?.name || t.prop_id}`
+  const propId = t.prop_id ?? t.propId
+  if (propId) {
+    const p = propItems.value.find(x => x.id === propId)
+    return `道具 · ${p?.name || propId}`
   }
   return '通用'
 }
@@ -3297,43 +3342,60 @@ async function genVid(sb) {
   }
 }
 async function pollVideoGeneration(generationId, storyboardId) {
-  if (!generationId) {
-    watchAsyncResult(() => {
-      const target = sbs.value.find(s => s.id === storyboardId)
-      const done = !!(target?.video_url || target?.videoUrl)
-      if (done) pendingVideoIds.value = pendingVideoIds.value.filter(item => item !== storyboardId)
-      return done
-    }, 60, 4000)
-    return
-  }
-  for (let i = 0; i < 120; i++) {
-    await sleep(4000)
-    try {
-      const res = await taskAPI.get(generationId)
-      await refresh()
-      if (res?.status === 'completed') {
-        pendingVideoIds.value = pendingVideoIds.value.filter(item => item !== storyboardId)
-        delete failedVideoMessages.value[storyboardId]
-        toast.success('视频生成完成')
-        return
-      }
-      if (res?.status === 'failed') {
-        pendingVideoIds.value = pendingVideoIds.value.filter(item => item !== storyboardId)
-        failedVideoMessages.value = {
-          ...failedVideoMessages.value,
-          [storyboardId]: res?.error_msg || res?.errorMsg || '视频生成失败',
+  const key = `${storyboardId}:${generationId || 'watch'}`
+  if (videoPollInFlight.has(key)) return
+  videoPollInFlight.add(key)
+  try {
+    if (!generationId) {
+      // 无任务 id 时只能靠「状态离开 processing」；不能用是否已有 video_url（重新生成时旧片还在）
+      for (let i = 0; i < 120; i++) {
+        await sleep(4000)
+        await refresh()
+        if (!isPendingVideo(storyboardId)) return
+        const still = genTasks.value.some((t) =>
+          (t.type === 'video')
+          && Number(t.storyboard_id ?? t.storyboardId) === Number(storyboardId)
+          && (t.status === 'processing' || t.status === 'pending'),
+        )
+        if (!still) {
+          pendingVideoIds.value = pendingVideoIds.value.filter((item) => item !== storyboardId)
+          return
         }
-        toast.error(failedVideoMessages.value[storyboardId])
-        return
       }
-    } catch {}
+      pendingVideoIds.value = pendingVideoIds.value.filter((item) => item !== storyboardId)
+      return
+    }
+    for (let i = 0; i < 120; i++) {
+      await sleep(4000)
+      try {
+        const res = await taskAPI.get(generationId)
+        await refresh()
+        if (res?.status === 'completed') {
+          pendingVideoIds.value = pendingVideoIds.value.filter(item => item !== storyboardId)
+          delete failedVideoMessages.value[storyboardId]
+          toast.success('视频生成完成')
+          return
+        }
+        if (res?.status === 'failed') {
+          pendingVideoIds.value = pendingVideoIds.value.filter(item => item !== storyboardId)
+          failedVideoMessages.value = {
+            ...failedVideoMessages.value,
+            [storyboardId]: res?.error_msg || res?.errorMsg || '视频生成失败',
+          }
+          toast.error(failedVideoMessages.value[storyboardId])
+          return
+        }
+      } catch {}
+    }
+    pendingVideoIds.value = pendingVideoIds.value.filter(item => item !== storyboardId)
+    failedVideoMessages.value = {
+      ...failedVideoMessages.value,
+      [storyboardId]: '视频生成超时',
+    }
+    toast.error('视频生成超时')
+  } finally {
+    videoPollInFlight.delete(key)
   }
-  pendingVideoIds.value = pendingVideoIds.value.filter(item => item !== storyboardId)
-  failedVideoMessages.value = {
-    ...failedVideoMessages.value,
-    [storyboardId]: '视频生成超时',
-  }
-  toast.error('视频生成超时')
 }
 function batchVideos() {
   const missing = sbs.value.filter(s => !hasVid(s) && !isPendingVideo(s.id))
@@ -4267,6 +4329,10 @@ onMounted(async () => { await refresh(); loadConfigs(); syncExtractStatus() })
   text-overflow: ellipsis;
 }
 .shot-location svg { flex-shrink: 0; }
+.storyboard-shot-card.is-generating {
+  border-color: rgba(217, 119, 6, 0.45);
+  box-shadow: 0 0 0 1px rgba(217, 119, 6, 0.12);
+}
 .shot-chip-video {
   display: inline-flex;
   align-items: center;
@@ -4278,6 +4344,32 @@ onMounted(async () => { await refresh(); loadConfigs(); syncExtractStatus() })
   border-radius: 999px;
   background: var(--info-bg);
   color: var(--info);
+  font-size: 10px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.shot-chip-generating {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  flex-shrink: 0;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(217, 119, 6, 0.12);
+  color: #b45309;
+  font-size: 10px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.video-task-regen-badge {
+  flex-shrink: 0;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(217, 119, 6, 0.12);
+  color: #b45309;
   font-size: 10px;
   font-weight: 650;
   white-space: nowrap;

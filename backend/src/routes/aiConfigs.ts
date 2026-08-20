@@ -5,6 +5,7 @@ import { success, notFound, created, badRequest, now } from '../utils/response.j
 import { toSnakeCase } from '../utils/transform.js'
 import { joinProviderUrl } from '../services/adapters/url.js'
 import { isOfficialProvider } from '../services/ai.js'
+import { loadBuiltinWorkflowApi } from '../services/adapters/comfyui-common.js'
 import { redactUrl, logTaskError, logTaskProgress, logTaskSuccess } from '../utils/task-logger.js'
 
 const app = new Hono()
@@ -23,6 +24,36 @@ function geminiHeaders(apiKey?: string, withJson = false) {
   }
   if (withJson) headers['Content-Type'] = 'application/json'
   return headers
+}
+
+function parseSettingsField(raw?: string | null) {
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+function serializeSettings(bodySettings: unknown): string | null {
+  if (bodySettings == null || bodySettings === '') return null
+  if (typeof bodySettings === 'string') {
+    try {
+      JSON.parse(bodySettings)
+      return bodySettings
+    } catch {
+      return JSON.stringify({ workflowApi: null })
+    }
+  }
+  return JSON.stringify(bodySettings)
+}
+
+function mapConfigRow(row: typeof schema.aiServiceConfigs.$inferSelect) {
+  return {
+    ...toSnakeCase(row),
+    model: row.model ? JSON.parse(row.model) : [],
+    settings: parseSettingsField(row.settings),
+  }
 }
 
 function buildProbe(serviceType: string, provider: string, baseUrl: string, model?: string, apiKey?: string) {
@@ -77,6 +108,15 @@ function buildProbe(serviceType: string, provider: string, baseUrl: string, mode
     }
   }
 
+  if (p === 'comfyui') {
+    return {
+      method: 'GET',
+      url: joinProviderUrl(baseUrl, '', '/system_stats'),
+      headers: bearerHeaders(apiKey),
+      body: undefined,
+    }
+  }
+
   return {
     method: 'GET',
     url: joinProviderUrl(baseUrl, '', m ? `/${m}` : '/'),
@@ -91,11 +131,20 @@ app.get('/', async (c) => {
   let rows = await db.select().from(schema.aiServiceConfigs)
   if (serviceType) rows = rows.filter(r => r.serviceType === serviceType)
 
-  const parsed = rows.map(r => ({
-    ...toSnakeCase(r),
-    model: r.model ? JSON.parse(r.model) : [],
-  }))
+  const parsed = rows.map(mapConfigRow)
   return success(c, parsed)
+})
+
+// GET /ai-configs/comfyui-default-workflow?type=image|video  （须在 /:id 之前）
+app.get('/comfyui-default-workflow', async (c) => {
+  const type = (c.req.query('type') || 'image').toLowerCase()
+  if (type !== 'image' && type !== 'video') {
+    return badRequest(c, 'type must be image or video')
+  }
+  return success(c, {
+    type,
+    workflow_api: loadBuiltinWorkflowApi(type),
+  })
 })
 
 // POST /ai-configs
@@ -118,6 +167,7 @@ app.post('/', async (c) => {
     baseUrl: body.base_url || '',
     apiKey: body.api_key || '',
     model: JSON.stringify(body.model || []),
+    settings: serializeSettings(body.settings),
     priority: body.priority || 0,
     isActive: true,
     createdAt: ts,
@@ -127,10 +177,7 @@ app.post('/', async (c) => {
   const [row] = await db.select().from(schema.aiServiceConfigs)
     .where(eq(schema.aiServiceConfigs.id, getInsertId(res)))
 
-  return created(c, {
-    ...toSnakeCase(row),
-    model: row.model ? JSON.parse(row.model) : [],
-  })
+  return created(c, mapConfigRow(row))
 })
 
 // POST /ai-configs/test
@@ -208,12 +255,10 @@ app.post('/test', async (c) => {
 // GET /ai-configs/:id
 app.get('/:id', async (c) => {
   const id = Number(c.req.param('id'))
+  if (!Number.isFinite(id)) return notFound(c)
   const [row] = await db.select().from(schema.aiServiceConfigs).where(eq(schema.aiServiceConfigs.id, id))
   if (!row) return notFound(c)
-  return success(c, {
-    ...toSnakeCase(row),
-    model: row.model ? JSON.parse(row.model) : [],
-  })
+  return success(c, mapConfigRow(row))
 })
 
 // PUT /ai-configs/:id
@@ -239,6 +284,7 @@ app.put('/:id', async (c) => {
   if ('model' in body) updates.model = JSON.stringify(body.model)
   if ('priority' in body) updates.priority = body.priority
   if ('is_active' in body) updates.isActive = body.is_active
+  if ('settings' in body) updates.settings = serializeSettings(body.settings)
 
   await db.update(schema.aiServiceConfigs).set(updates).where(eq(schema.aiServiceConfigs.id, id))
   return success(c)

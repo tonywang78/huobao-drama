@@ -13,12 +13,14 @@ export interface AIConfig {
   baseUrl: string
   apiKey: string
   model: string
+  /** 厂商扩展配置（如 ComfyUI settings.workflowApi） */
+  settings?: string | Record<string, unknown> | null
 }
 
 export const officialProviders: Record<ServiceType, readonly string[]> = {
   text: ['openai', 'gemini', 'volcengine'],
-  image: ['openai', 'gemini', 'volcengine'],
-  video: ['volcengine', 'minimax'],
+  image: ['openai', 'gemini', 'volcengine', 'comfyui'],
+  video: ['volcengine', 'minimax', 'comfyui'],
 }
 
 export function isOfficialProvider(serviceType?: string | null, provider?: string | null): boolean {
@@ -78,6 +80,7 @@ export async function getActiveConfig(serviceType: ServiceType): Promise<AIConfi
     baseUrl: active.baseUrl,
     apiKey: active.apiKey,
     model: models[0] || '',
+    settings: active.settings || null,
   }
 }
 
@@ -130,5 +133,6 @@ export async function getConfigById(id: number): Promise<AIConfig | null> {
     baseUrl: row.baseUrl,
     apiKey: row.apiKey,
     model: models[0] || '',
+    settings: row.settings || null,
   }
 }

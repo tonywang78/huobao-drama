@@ -48,9 +48,15 @@ export async function saveUploadedFile(data: ArrayBuffer, subDir: string, origin
 
 function getExtFromUrl(url: string): string {
   try {
-    const pathname = new URL(url).pathname
-    const ext = path.extname(pathname)
-    if (ext && ext.length <= 5) return ext
+    const u = new URL(url)
+    // ComfyUI /view?filename=xxx.mp4 —— 扩展名在 query 里
+    const fromQuery = u.searchParams.get('filename') || u.searchParams.get('file')
+    if (fromQuery) {
+      const ext = path.extname(fromQuery)
+      if (ext && ext.length <= 8) return ext.toLowerCase()
+    }
+    const ext = path.extname(u.pathname)
+    if (ext && ext.length <= 8) return ext.toLowerCase()
   } catch {}
   return '.bin'
 }

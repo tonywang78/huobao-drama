@@ -9,8 +9,9 @@ export interface ImageProviderAdapter {
    * 构建图片生成请求
    * @param config AI 配置 { baseUrl, apiKey, model }
    * @param record 图片生成记录
+   * ComfyUI 等需要先上传参考图的厂商可返回 Promise
    */
-  buildGenerateRequest(config: AIConfig, record: ImageGenerationRecord): ProviderRequest
+  buildGenerateRequest(config: AIConfig, record: ImageGenerationRecord): ProviderRequest | Promise<ProviderRequest>
 
   /**
    * 解析生成响应，判断是同步还是异步
@@ -26,8 +27,9 @@ export interface ImageProviderAdapter {
 
   /**
    * 解析轮询响应
+   * @param config / taskId 可选；ComfyUI 拼 /view URL 时需要
    */
-  parsePollResponse(result: any): ImagePollResponse
+  parsePollResponse(result: any, config?: AIConfig, taskId?: string): ImagePollResponse | Promise<ImagePollResponse>
 
   /**
    * 从响应中提取图片 URL（用于直接下载）
@@ -48,13 +50,13 @@ export interface ImageProviderAdapter {
 export interface VideoProviderAdapter {
   provider: string
 
-  buildGenerateRequest(config: AIConfig, record: VideoGenerationRecord): ProviderRequest
+  buildGenerateRequest(config: AIConfig, record: VideoGenerationRecord): ProviderRequest | Promise<ProviderRequest>
 
   parseGenerateResponse(result: any): VideoGenResponse
 
   buildPollRequest(config: AIConfig, taskId: string): ProviderRequest
 
-  parsePollResponse(result: any): VideoPollResponse
+  parsePollResponse(result: any, config?: AIConfig, taskId?: string): VideoPollResponse | Promise<VideoPollResponse>
 
   extractVideoUrl(result: any): string | null
 }
@@ -73,6 +75,8 @@ export interface AIConfig {
   baseUrl: string
   apiKey: string
   model: string
+  /** 厂商扩展配置（如 ComfyUI workflowApi），JSON 对象或序列化字符串 */
+  settings?: string | Record<string, unknown> | null
 }
 
 export interface ImageGenerationRecord {
