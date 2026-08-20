@@ -3,8 +3,8 @@
  * 创建(processing) → 适配器构建请求 → 同步完成或异步轮询 → 下载落盘 → 回写业务表
  */
 import { db, getInsertId, schema } from '../db/index.js'
-import { eq } from 'drizzle-orm'
-import { getActiveConfig, getConfigById } from './ai.js'
+import { eq, inArray, and } from 'drizzle-orm'
+import { getActiveConfig, getConfigById, type ServiceType } from './ai.js'
 import { now } from '../utils/response.js'
 import { downloadFile, generateImageThumb, readImageAsCompressedDataUrl, saveBase64Image } from '../utils/storage.js'
 import { extractVideoPoster } from '../utils/video-poster.js'
@@ -134,6 +134,113 @@ export async function generateVideo(params: GenerateVideoParams): Promise<number
     params,
   })
   return id
+}
+
+type SysTaskRecord = typeof schema.sysTask.$inferSelect
+
+/** 仍可轮询 / 提交中的状态 */
+export function isCancellableTaskStatus(status: string | null | undefined): boolean {
+  return status === 'processing' || status === 'pending'
+}
+
+async function isActiveTask(id: number): Promise<boolean> {
+  const [row] = await db.select().from(schema.sysTask).where(eq(schema.sysTask.id, id))
+  return !!row && isCancellableTaskStatus(row.status)
+}
+
+async function resolveConfigForCancel(record: SysTaskRecord): Promise<AIConfig | null> {
+  const serviceType = record.type as ServiceType
+  if (record.storyboardId) {
+    const [sb] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, record.storyboardId))
+    if (sb) {
+      const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, sb.episodeId))
+      const lockedId = serviceType === 'video' ? ep?.videoConfigId : ep?.imageConfigId
+      if (lockedId != null) {
+        const locked = await getConfigById(lockedId)
+        if (locked) return locked
+      }
+    }
+  }
+
+  const rows = (await db.select().from(schema.aiServiceConfigs)
+    .where(eq(schema.aiServiceConfigs.serviceType, serviceType)))
+    .filter(r => (r.provider || '').toLowerCase() === (record.provider || '').toLowerCase())
+    .sort((a, b) => (b.priority || 0) - (a.priority || 0))
+  const match = rows.find(r => r.isActive) || rows[0]
+  if (match) {
+    const models = match.model ? JSON.parse(match.model) : []
+    return {
+      provider: match.provider || '',
+      baseUrl: match.baseUrl,
+      apiKey: match.apiKey,
+      model: models[0] || '',
+      settings: match.settings || null,
+    }
+  }
+  return getActiveConfig(serviceType)
+}
+
+/**
+ * 取消生成任务：本地标 cancelled 并停止 poll；Comfy 等尽力中断上游。
+ * 已终态任务原样返回，不改写。
+ */
+export async function cancelTask(id: number): Promise<SysTaskRecord | null> {
+  const [record] = await db.select().from(schema.sysTask).where(eq(schema.sysTask.id, id))
+  if (!record) return null
+  if (!isCancellableTaskStatus(record.status)) return record
+
+  await db.update(schema.sysTask)
+    .set({ status: 'cancelled', errorMsg: '用户取消', updatedAt: now() })
+    .where(eq(schema.sysTask.id, id))
+
+  logTaskProgress(taskLabel(record.type as TaskType), 'cancel', {
+    id,
+    provider: record.provider,
+    taskId: record.taskId,
+  })
+
+  if (record.taskId && record.provider) {
+    try {
+      const config = await resolveConfigForCancel(record)
+      if (config) {
+        const adapter = record.type === 'image'
+          ? getImageAdapter(config.provider)
+          : getVideoAdapter(config.provider)
+        if (typeof adapter.cancelRemoteTask === 'function') {
+          await adapter.cancelRemoteTask(config, record.taskId)
+        }
+      }
+    } catch (err: any) {
+      logTaskWarn(taskLabel(record.type as TaskType), 'cancel-remote', {
+        id,
+        error: err?.message || String(err),
+      })
+    }
+  }
+
+  const [updated] = await db.select().from(schema.sysTask).where(eq(schema.sysTask.id, id))
+  return updated || null
+}
+
+/** 取消某集下所有进行中的生成任务（默认仅 video） */
+export async function cancelEpisodeTasks(
+  episodeId: number,
+  type: TaskType = 'video',
+): Promise<{ cancelled: number; ids: number[] }> {
+  const sbs = await db.select().from(schema.storyboards).where(eq(schema.storyboards.episodeId, episodeId))
+  const sbIds = sbs.map(s => s.id)
+  if (!sbIds.length) return { cancelled: 0, ids: [] }
+
+  const rows = await db.select().from(schema.sysTask)
+    .where(inArray(schema.sysTask.storyboardId, sbIds))
+  const active = rows.filter(r => r.type === type && isCancellableTaskStatus(r.status))
+
+  const ids: number[] = []
+  for (const row of active) {
+    await cancelTask(row.id)
+    ids.push(row.id)
+  }
+  return { cancelled: ids.length, ids }
 }
 
 async function createTask(
@@ -274,6 +381,10 @@ async function processTask(id: number, config: AIConfig) {
         throw new Error('No image URL or base64 data in response')
       }
 
+      if (!(await isActiveTask(id))) {
+        logTaskProgress(label, 'cancel-skip-poll', { id })
+        return
+      }
       await markPolling(id, taskId)
       pollTask(record, config, taskId!)
       return
@@ -288,9 +399,14 @@ async function processTask(id: number, config: AIConfig) {
       return
     }
 
+    if (!(await isActiveTask(id))) {
+      logTaskProgress(label, 'cancel-skip-poll', { id })
+      return
+    }
     await markPolling(id, taskId)
     pollTask(record, config, taskId!)
   } catch (err: any) {
+    if (!(await isActiveTask(id))) return
     await failTask(id, err.message)
   }
 }
@@ -298,18 +414,21 @@ async function processTask(id: number, config: AIConfig) {
 async function markPolling(id: number, taskId: string | undefined) {
   await db.update(schema.sysTask)
     .set({ taskId, status: 'processing', updatedAt: now() })
-    .where(eq(schema.sysTask.id, id))
+    .where(and(
+      eq(schema.sysTask.id, id),
+      inArray(schema.sysTask.status, ['processing', 'pending']),
+    ))
   logTaskProgress('SysTask', 'poll-start', { id, taskId })
 }
 
 async function failTask(id: number, message: string) {
+  const [row] = await db.select().from(schema.sysTask).where(eq(schema.sysTask.id, id))
+  if (!row || row.status === 'cancelled' || row.status === 'completed') return
   logTaskError('SysTask', 'failed', { id, error: message })
   await db.update(schema.sysTask)
     .set({ status: 'failed', errorMsg: message, updatedAt: now() })
     .where(eq(schema.sysTask.id, id))
 }
-
-type SysTaskRecord = typeof schema.sysTask.$inferSelect
 
 async function pollTask(record: SysTaskRecord, config: AIConfig, taskId: string) {
   const type = record.type as TaskType
@@ -326,6 +445,10 @@ async function pollTask(record: SysTaskRecord, config: AIConfig, taskId: string)
       return
     }
     await new Promise(r => setTimeout(r, profile.intervalMs))
+    if (!(await isActiveTask(record.id))) {
+      logTaskProgress(label, 'poll-cancelled', { id: record.id, taskId, attempt: i + 1 })
+      return
+    }
     try {
       const { url, method, headers } = adapter.buildPollRequest(config, taskId)
       logTaskProgress(label, 'poll-request', {
@@ -350,6 +473,11 @@ async function pollTask(record: SysTaskRecord, config: AIConfig, taskId: string)
       // 图片/视频 PollResponse 结构不同，这里统一按 any 取值后按 type 分支
       // 第三参 taskId 供 ComfyUI 等从 history 条目拼 /view URL
       const pollResp: any = await Promise.resolve(adapter.parsePollResponse(result, config, taskId))
+
+      if (!(await isActiveTask(record.id))) {
+        logTaskProgress(label, 'poll-cancelled', { id: record.id, taskId, attempt: i + 1 })
+        return
+      }
 
       if (
         config.provider === 'comfyui'
@@ -403,6 +531,7 @@ async function pollTask(record: SysTaskRecord, config: AIConfig, taskId: string)
         return
       }
     } catch (err: any) {
+      if (!(await isActiveTask(record.id))) return
       const exhausted = i === profile.attempts - 1
         || (profile.maxDurationMs != null && Date.now() - startedAt >= profile.maxDurationMs)
       if (exhausted) {
@@ -416,29 +545,43 @@ async function pollTask(record: SysTaskRecord, config: AIConfig, taskId: string)
 }
 
 async function handleImageComplete(record: SysTaskRecord, imageUrl: string) {
+  if (!(await isActiveTask(record.id))) return
   const localPath = await downloadFile(imageUrl, 'images')
   // 列表页缩略图（前端按命名约定推导地址，失败不影响主流程）
   await generateImageThumb(localPath)
 
+  if (!(await isActiveTask(record.id))) return
   await db.update(schema.sysTask)
     .set({ resultUrl: imageUrl, localPath, status: 'completed', completedAt: now(), updatedAt: now() })
-    .where(eq(schema.sysTask.id, record.id))
+    .where(and(
+      eq(schema.sysTask.id, record.id),
+      inArray(schema.sysTask.status, ['processing', 'pending']),
+    ))
+
+  const [latest] = await db.select().from(schema.sysTask).where(eq(schema.sysTask.id, record.id))
+  if (latest?.status !== 'completed') return
 
   logTaskSuccess('ImageTask', 'downloaded', { id: record.id, provider: record.provider, localPath })
-
   await writeBackImageAssets(record, localPath)
 }
 
 async function handleImageCompleteBase64(record: SysTaskRecord, base64Data: string, mimeType: string) {
+  if (!(await isActiveTask(record.id))) return
   const localPath = await saveBase64Image(base64Data, mimeType, 'images')
   await generateImageThumb(localPath)
 
+  if (!(await isActiveTask(record.id))) return
   await db.update(schema.sysTask)
     .set({ localPath, status: 'completed', completedAt: now(), updatedAt: now() })
-    .where(eq(schema.sysTask.id, record.id))
+    .where(and(
+      eq(schema.sysTask.id, record.id),
+      inArray(schema.sysTask.status, ['processing', 'pending']),
+    ))
+
+  const [latest] = await db.select().from(schema.sysTask).where(eq(schema.sysTask.id, record.id))
+  if (latest?.status !== 'completed') return
 
   logTaskSuccess('ImageTask', 'saved-base64', { id: record.id, provider: record.provider, mimeType, localPath })
-
   await writeBackImageAssets(record, localPath)
 }
 
@@ -464,12 +607,20 @@ async function writeBackImageAssets(record: SysTaskRecord, localPath: string) {
 }
 
 async function handleVideoComplete(record: SysTaskRecord, videoUrl: string, duration: number | null | undefined) {
+  if (!(await isActiveTask(record.id))) return
   const localPath = await downloadFile(videoUrl, 'videos')
   // 海报帧供列表/封面展示，避免前端为显示首帧缓冲整个视频
   await extractVideoPoster(localPath)
+  if (!(await isActiveTask(record.id))) return
   await db.update(schema.sysTask)
     .set({ resultUrl: videoUrl, localPath, status: 'completed', completedAt: now(), updatedAt: now() })
-    .where(eq(schema.sysTask.id, record.id))
+    .where(and(
+      eq(schema.sysTask.id, record.id),
+      inArray(schema.sysTask.status, ['processing', 'pending']),
+    ))
+
+  const [latest] = await db.select().from(schema.sysTask).where(eq(schema.sysTask.id, record.id))
+  if (latest?.status !== 'completed') return
 
   logTaskSuccess('VideoTask', 'downloaded', { id: record.id, localPath, storyboardId: record.storyboardId, duration })
 

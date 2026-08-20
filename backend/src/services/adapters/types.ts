@@ -42,6 +42,9 @@ export interface ImageProviderAdapter {
    * 仅用于 Gemini 等只返回 base64 的厂商
    */
   extractImageBase64(result: any): { data: string; mimeType: string } | null
+
+  /** 尽力取消上游任务；未实现则仅本地终止轮询 */
+  cancelRemoteTask?(config: AIConfig, taskId: string): Promise<void>
 }
 
 /**
@@ -59,6 +62,9 @@ export interface VideoProviderAdapter {
   parsePollResponse(result: any, config?: AIConfig, taskId?: string): VideoPollResponse | Promise<VideoPollResponse>
 
   extractVideoUrl(result: any): string | null
+
+  /** 尽力取消上游任务；未实现则仅本地终止轮询 */
+  cancelRemoteTask?(config: AIConfig, taskId: string): Promise<void>
 }
 
 // ============ 通用类型 ============

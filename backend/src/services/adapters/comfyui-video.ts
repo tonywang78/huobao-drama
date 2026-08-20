@@ -13,6 +13,7 @@ import type {
 import {
   buildComfyHistoryRequest,
   buildComfyPromptRequest,
+  cancelComfyRemoteTask,
   isEmptyComfyHistory,
   isComfyPromptQueued,
   parseComfyHistory,
@@ -77,5 +78,9 @@ export class ComfyUIVideoAdapter implements VideoProviderAdapter {
 
   extractVideoUrl(_result: any): string | null {
     return null
+  }
+
+  async cancelRemoteTask(config: AIConfig, taskId: string): Promise<void> {
+    await cancelComfyRemoteTask(config, taskId)
   }
 }

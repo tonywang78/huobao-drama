@@ -734,6 +734,14 @@
                   <span class="video-task-metric is-pending">{{ pendingVideoIds.length }} 生成中</span>
                   <span class="video-task-metric is-done">{{ videoTaskDoneCount }} 完成</span>
                   <span class="video-task-metric is-failed">{{ videoTaskFailedCount }} 失败</span>
+                  <button
+                    v-if="pendingVideoIds.length"
+                    class="btn btn-sm"
+                    :disabled="cancellingAllVideos"
+                    @click="cancelAllVids"
+                  >
+                    {{ cancellingAllVideos ? '取消中…' : '全部取消' }}
+                  </button>
                 </div>
                 </div>
                 <div class="video-task-table">
@@ -781,8 +789,16 @@
                     {{ videoTaskStatusLabel(task.storyboard) }}
                   </span>
                   <button
+                    v-if="videoTaskState(task.storyboard) === 'pending'"
                     class="btn btn-sm video-task-action"
-                    :disabled="videoTaskState(task.storyboard) === 'pending'"
+                    :disabled="cancellingVideoIds.includes(task.storyboard.id)"
+                    @click.stop="cancelVid(task.storyboard)"
+                  >
+                    {{ cancellingVideoIds.includes(task.storyboard.id) ? '取消中…' : '取消' }}
+                  </button>
+                  <button
+                    v-else
+                    class="btn btn-sm video-task-action"
                     @click.stop="genVid(task.storyboard)"
                   >
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
@@ -959,8 +975,16 @@
                   </section>
 
                   <button
+                    v-if="videoTaskState(selectedSb) === 'pending'"
+                    class="btn video-inspector-action"
+                    :disabled="cancellingVideoIds.includes(selectedSb.id)"
+                    @click="cancelVid(selectedSb)"
+                  >
+                    {{ cancellingVideoIds.includes(selectedSb.id) ? '取消中…' : '取消生成' }}
+                  </button>
+                  <button
+                    v-else
                     class="btn btn-primary video-inspector-action"
-                    :disabled="videoTaskState(selectedSb) === 'pending'"
                     @click="genVid(selectedSb)"
                   >
                     {{ videoTaskActionLabel(selectedSb) }}
@@ -1659,6 +1683,8 @@ const pendingCharImageIds = ref([])
 const pendingSceneImageIds = ref([])
 const pendingPropImageIds = ref([])
 const pendingVideoIds = ref([])
+const cancellingVideoIds = ref([])
+const cancellingAllVideos = ref(false)
 const failedVideoMessages = ref({})
 /** 避免刷新恢复时对同一任务重复开多条轮询 */
 const videoPollInFlight = new Set()
@@ -2219,13 +2245,14 @@ function genTaskKindLabel(kind) {
 function genTaskStatusLabel(status) {
   if (status === 'completed') return '已完成'
   if (status === 'failed') return '失败'
+  if (status === 'cancelled') return '已取消'
   return '生成中'
 }
 
 // 映射到现有 video-task-status 的样式类:is-done / is-pending / is-failed
 function genTaskStateClass(status) {
   if (status === 'completed') return 'done'
-  if (status === 'failed') return 'failed'
+  if (status === 'failed' || status === 'cancelled') return 'failed'
   return 'pending'
 }
 
@@ -3376,6 +3403,11 @@ async function pollVideoGeneration(generationId, storyboardId) {
           toast.success('视频生成完成')
           return
         }
+        if (res?.status === 'cancelled') {
+          pendingVideoIds.value = pendingVideoIds.value.filter(item => item !== storyboardId)
+          delete failedVideoMessages.value[storyboardId]
+          return
+        }
         if (res?.status === 'failed') {
           pendingVideoIds.value = pendingVideoIds.value.filter(item => item !== storyboardId)
           failedVideoMessages.value = {
@@ -3397,6 +3429,68 @@ async function pollVideoGeneration(generationId, storyboardId) {
     videoPollInFlight.delete(key)
   }
 }
+
+function findActiveVideoTaskId(storyboardId) {
+  const rows = genTasks.value.filter((t) =>
+    (t.type === 'video')
+    && Number(t.storyboard_id ?? t.storyboardId) === Number(storyboardId)
+    && (t.status === 'processing' || t.status === 'pending'),
+  )
+  if (rows.length) return rows[0].id
+  return null
+}
+
+async function cancelVid(sb) {
+  if (!sb?.id || cancellingVideoIds.value.includes(sb.id)) return
+  cancellingVideoIds.value = [...cancellingVideoIds.value, sb.id]
+  try {
+    let taskId = findActiveVideoTaskId(sb.id)
+    if (!taskId) {
+      const rows = await taskAPI.list({ type: 'video', storyboard_id: sb.id })
+      const active = (Array.isArray(rows) ? rows : [])
+        .filter(t => t.status === 'processing' || t.status === 'pending')
+        .sort((a, b) => String(b.createdAt || b.created_at || '').localeCompare(String(a.createdAt || a.created_at || '')))
+      taskId = active[0]?.id
+    }
+    if (!taskId) {
+      pendingVideoIds.value = pendingVideoIds.value.filter(item => item !== sb.id)
+      toast.info('没有进行中的视频任务')
+      return
+    }
+    await taskAPI.cancel(taskId)
+    pendingVideoIds.value = pendingVideoIds.value.filter(item => item !== sb.id)
+    delete failedVideoMessages.value[sb.id]
+    await loadGenTasks()
+    toast.success('已取消视频生成')
+  } catch (e) {
+    toast.error(e.message || '取消失败')
+  } finally {
+    cancellingVideoIds.value = cancellingVideoIds.value.filter(id => id !== sb.id)
+  }
+}
+
+async function cancelAllVids() {
+  if (!epId.value || cancellingAllVideos.value) return
+  if (!pendingVideoIds.value.length) {
+    toast.info('没有进行中的视频任务')
+    return
+  }
+  cancellingAllVideos.value = true
+  try {
+    const result = await taskAPI.cancelAll({ episode_id: epId.value, type: 'video' })
+    pendingVideoIds.value = []
+    cancellingVideoIds.value = []
+    await loadGenTasks()
+    await refresh()
+    const n = result?.cancelled ?? result?.ids?.length ?? 0
+    toast.success(n ? `已取消 ${n} 个视频任务` : '已取消全部视频任务')
+  } catch (e) {
+    toast.error(e.message || '全部取消失败')
+  } finally {
+    cancellingAllVideos.value = false
+  }
+}
+
 function batchVideos() {
   const missing = sbs.value.filter(s => !hasVid(s) && !isPendingVideo(s.id))
   if (!missing.length) {

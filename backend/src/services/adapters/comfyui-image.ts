@@ -13,6 +13,7 @@ import type {
 import {
   buildComfyHistoryRequest,
   buildComfyPromptRequest,
+  cancelComfyRemoteTask,
   isEmptyComfyHistory,
   isComfyPromptQueued,
   parseComfyHistory,
@@ -74,5 +75,9 @@ export class ComfyUIImageAdapter implements ImageProviderAdapter {
 
   extractImageBase64(_result: any): { data: string; mimeType: string } | null {
     return null
+  }
+
+  async cancelRemoteTask(config: AIConfig, taskId: string): Promise<void> {
+    await cancelComfyRemoteTask(config, taskId)
   }
 }

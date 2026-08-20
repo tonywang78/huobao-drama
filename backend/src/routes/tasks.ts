@@ -1,8 +1,8 @@
 import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
 import { db, schema } from '../db/index.js'
-import { success, created, badRequest } from '../utils/response.js'
-import { generateImage, generateVideo } from '../services/generation.js'
+import { success, created, badRequest, notFound } from '../utils/response.js'
+import { cancelEpisodeTasks, cancelTask, generateImage, generateVideo } from '../services/generation.js'
 import { logTaskError, logTaskPayload, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
 
 const app = new Hono()
@@ -95,12 +95,48 @@ app.post('/', async (c) => {
   }
 })
 
+// POST /tasks/cancel-all — 取消某集下进行中的任务（须在 /:id 之前）
+app.post('/cancel-all', async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const episodeId = Number(body.episode_id)
+  if (!Number.isFinite(episodeId) || episodeId <= 0) {
+    return badRequest(c, 'episode_id is required')
+  }
+  const type = (body.type || 'video') as TaskType
+  if (type !== 'image' && type !== 'video') return badRequest(c, 'type 必须为 image 或 video')
+
+  try {
+    const result = await cancelEpisodeTasks(episodeId, type)
+    logTaskSuccess('TaskAPI', 'cancel-all', { episodeId, type, ...result })
+    return success(c, result)
+  } catch (err: any) {
+    logTaskError('TaskAPI', 'cancel-all', { episodeId, error: err.message })
+    return badRequest(c, err.message)
+  }
+})
+
 // GET /tasks/:id — 轮询任务状态
 app.get('/:id', async (c) => {
   const id = Number(c.req.param('id'))
   const [row] = await db.select().from(schema.sysTask)
     .where(eq(schema.sysTask.id, id))
   return success(c, row || null)
+})
+
+// POST /tasks/:id/cancel — 取消进行中的任务
+app.post('/:id/cancel', async (c) => {
+  const id = Number(c.req.param('id'))
+  if (!Number.isFinite(id) || id <= 0) return badRequest(c, 'invalid task id')
+
+  try {
+    const row = await cancelTask(id)
+    if (!row) return notFound(c, 'Task not found')
+    logTaskSuccess('TaskAPI', 'cancel', { taskId: id, status: row.status })
+    return success(c, row)
+  } catch (err: any) {
+    logTaskError('TaskAPI', 'cancel', { taskId: id, error: err.message })
+    return badRequest(c, err.message)
+  }
 })
 
 // GET /tasks — 按 type / storyboard_id / drama_id 过滤

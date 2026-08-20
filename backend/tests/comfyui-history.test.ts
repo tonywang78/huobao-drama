@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  buildComfyInterruptRequest,
+  buildComfyQueueDeleteRequest,
   isPromptInComfyQueuePayload,
   parseComfyHistory,
 } from '../src/services/adapters/comfyui-common.ts'
@@ -83,4 +85,29 @@ test('isPromptInComfyQueuePayload detects running and pending ids', () => {
   assert.equal(isPromptInComfyQueuePayload(queue, 'pend-2'), true)
   assert.equal(isPromptInComfyQueuePayload(queue, 'missing'), false)
   assert.equal(isPromptInComfyQueuePayload({ queue_running: [], queue_pending: [] }, 'x'), false)
+})
+
+test('buildComfyInterruptRequest posts to /interrupt', () => {
+  const req = buildComfyInterruptRequest({
+    provider: 'comfyui',
+    baseUrl: 'http://127.0.0.1:8188',
+    apiKey: 'secret',
+    model: 'comfy',
+  })
+  assert.equal(req.method, 'POST')
+  assert.match(req.url, /\/interrupt$/)
+  assert.equal(req.headers.Authorization, 'Bearer secret')
+  assert.equal(req.headers['Content-Type'], 'application/json')
+})
+
+test('buildComfyQueueDeleteRequest deletes prompt_id from queue', () => {
+  const req = buildComfyQueueDeleteRequest({
+    provider: 'comfyui',
+    baseUrl: 'http://127.0.0.1:8188/',
+    apiKey: '',
+    model: 'comfy',
+  }, 'prompt-abc')
+  assert.equal(req.method, 'POST')
+  assert.match(req.url, /\/queue$/)
+  assert.deepEqual(req.body, { delete: ['prompt-abc'] })
 })

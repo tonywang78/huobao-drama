@@ -304,6 +304,53 @@ export function buildComfyQueueRequest(config: AIConfig): ProviderRequest {
   }
 }
 
+/** 打断 Comfy 当前正在执行的 prompt（全局 interrupt，非按 id） */
+export function buildComfyInterruptRequest(config: AIConfig): ProviderRequest {
+  return {
+    url: joinProviderUrl(config.baseUrl, '', '/interrupt'),
+    method: 'POST',
+    headers: comfyAuthHeaders(config, true),
+    body: {},
+  }
+}
+
+/** 从 queue_pending / queue_running 中按 prompt_id 删除 */
+export function buildComfyQueueDeleteRequest(config: AIConfig, promptId: string): ProviderRequest {
+  return {
+    url: joinProviderUrl(config.baseUrl, '', '/queue'),
+    method: 'POST',
+    headers: comfyAuthHeaders(config, true),
+    body: { delete: [String(promptId)] },
+  }
+}
+
+/** 尽力中断：先 interrupt，再按 prompt_id 出队；任一失败不抛给调用方 */
+export async function cancelComfyRemoteTask(config: AIConfig, promptId: string): Promise<void> {
+  const interrupt = buildComfyInterruptRequest(config)
+  try {
+    await fetch(interrupt.url, {
+      method: interrupt.method,
+      headers: interrupt.headers,
+      body: JSON.stringify(interrupt.body ?? {}),
+      signal: AbortSignal.timeout(30_000),
+    })
+  } catch {
+    // best-effort
+  }
+
+  const del = buildComfyQueueDeleteRequest(config, promptId)
+  try {
+    await fetch(del.url, {
+      method: del.method,
+      headers: del.headers,
+      body: JSON.stringify(del.body),
+      signal: AbortSignal.timeout(30_000),
+    })
+  } catch {
+    // best-effort
+  }
+}
+
 /** Comfy queue 项通常为 [number, prompt_id, ...] */
 function collectPromptIdsFromQueueBucket(bucket: unknown): Set<string> {
   const ids = new Set<string>()
