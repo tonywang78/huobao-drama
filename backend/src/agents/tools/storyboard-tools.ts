@@ -305,9 +305,19 @@ const saveStoryboards = createTool({
   },
 })
 
+/** 字段显式传入且非 undefined（scene_id 允许 null 表示解绑） */
+function hasPresentField(fields: Record<string, unknown>, key: string): boolean {
+  return key in fields && fields[key] !== undefined
+}
+
+/** 字符串/数组等：忽略 null/undefined，避免 LLM 把未用 optional 填成 null 误覆盖 */
+function hasDefinedField(fields: Record<string, unknown>, key: string): boolean {
+  return hasPresentField(fields, key) && fields[key] !== null
+}
+
 const updateStoryboard = createTool({
   id: 'update_storyboard',
-  description: 'Update a specific storyboard shot.',
+  description: 'Update a specific storyboard shot. Only pass fields that should change; omit unused fields.',
   inputSchema: z.object({
     storyboard_id: z.number(),
     title: z.string().optional(),
@@ -328,26 +338,30 @@ const updateStoryboard = createTool({
     prop_ids: z.array(z.number()).optional(),
     duration: z.number().optional(),
   }),
-  execute: async ({ storyboard_id, ...fields }, context) => {
+  execute: async ({ storyboard_id, ...rawFields }, context) => {
     const ids = requireIds(context)
     if ('error' in ids) return ids
     const { episodeId, dramaId } = ids
+    const fields = rawFields as Record<string, unknown>
     const [storyboard] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, storyboard_id))
     if (!storyboard) return { error: `Storyboard ${storyboard_id} not found` }
+    const appliedKeys = Object.keys(fields).filter(k =>
+      k === 'scene_id' ? hasPresentField(fields, k) : hasDefinedField(fields, k),
+    )
     logTaskProgress('StoryboardTool', 'update-begin', {
       episodeId,
       storyboardId: storyboard_id,
-      fields: Object.keys(fields),
+      fields: appliedKeys,
     })
 
-    const currentCharacterIds = 'character_ids' in fields
-      ? fields.character_ids
+    const currentCharacterIds = hasDefinedField(fields, 'character_ids')
+      ? (fields.character_ids as number[])
       : (await db.select().from(schema.storyboardCharacters)
           .where(eq(schema.storyboardCharacters.storyboardId, storyboard_id)))
           .map(link => link.characterId)
 
-    const currentPropIds = 'prop_ids' in fields
-      ? fields.prop_ids
+    const currentPropIds = hasDefinedField(fields, 'prop_ids')
+      ? (fields.prop_ids as number[])
       : (await db.select().from(schema.storyboardProps)
           .where(eq(schema.storyboardProps.storyboardId, storyboard_id)))
           .map(link => link.propId)
@@ -355,39 +369,78 @@ const updateStoryboard = createTool({
     await validateStoryboardBindings(
       episodeId,
       dramaId,
-      'scene_id' in fields ? fields.scene_id : storyboard.sceneId,
+      hasPresentField(fields, 'scene_id') ? (fields.scene_id as number | null) : storyboard.sceneId,
       currentCharacterIds,
       currentPropIds,
     )
 
     const updates: Record<string, any> = { updatedAt: now() }
-    if ('title' in fields) updates.title = fields.title
-    if ('shot_type' in fields) updates.shotType = fields.shot_type
-    if ('angle' in fields) updates.angle = fields.angle
-    if ('movement' in fields) updates.movement = fields.movement
-    if ('location' in fields) updates.location = fields.location
-    if ('time' in fields) updates.time = fields.time
-    if ('result' in fields) updates.result = fields.result
-    if ('atmosphere' in fields) updates.atmosphere = fields.atmosphere
-    if ('image_prompt' in fields) updates.imagePrompt = fields.image_prompt
-    if ('video_prompt' in fields) updates.videoPrompt = fields.video_prompt
-    if ('bgm_prompt' in fields) updates.bgmPrompt = fields.bgm_prompt
-    if ('sound_effect' in fields) updates.soundEffect = fields.sound_effect
-    if ('description' in fields) updates.description = fields.description
-    if ('scene_id' in fields) updates.sceneId = fields.scene_id
-    if ('duration' in fields) updates.duration = fields.duration
+    if (hasDefinedField(fields, 'title')) updates.title = fields.title
+    if (hasDefinedField(fields, 'shot_type')) updates.shotType = fields.shot_type
+    if (hasDefinedField(fields, 'angle')) updates.angle = fields.angle
+    if (hasDefinedField(fields, 'movement')) updates.movement = fields.movement
+    if (hasDefinedField(fields, 'location')) updates.location = fields.location
+    if (hasDefinedField(fields, 'time')) updates.time = fields.time
+    if (hasDefinedField(fields, 'result')) updates.result = fields.result
+    if (hasDefinedField(fields, 'atmosphere')) updates.atmosphere = fields.atmosphere
+    if (hasDefinedField(fields, 'image_prompt')) updates.imagePrompt = fields.image_prompt
+    if (hasDefinedField(fields, 'video_prompt')) updates.videoPrompt = fields.video_prompt
+    if (hasDefinedField(fields, 'bgm_prompt')) updates.bgmPrompt = fields.bgm_prompt
+    if (hasDefinedField(fields, 'sound_effect')) updates.soundEffect = fields.sound_effect
+    if (hasDefinedField(fields, 'description')) updates.description = fields.description
+    if (hasPresentField(fields, 'scene_id')) updates.sceneId = fields.scene_id
+    if (hasDefinedField(fields, 'duration')) updates.duration = fields.duration
     await db.update(schema.storyboards).set(updates).where(eq(schema.storyboards.id, storyboard_id))
-    if ('character_ids' in fields) await syncStoryboardCharacters(storyboard_id, fields.character_ids || [])
-    if ('prop_ids' in fields) await syncStoryboardProps(storyboard_id, fields.prop_ids || [])
+    if (hasDefinedField(fields, 'character_ids')) await syncStoryboardCharacters(storyboard_id, (fields.character_ids as number[]) || [])
+    if (hasDefinedField(fields, 'prop_ids')) await syncStoryboardProps(storyboard_id, (fields.prop_ids as number[]) || [])
     logTaskSuccess('StoryboardTool', 'update-complete', {
       episodeId,
       storyboardId: storyboard_id,
       updatedFields: Object.keys(updates),
-      characterIds: 'character_ids' in fields ? (fields.character_ids || []).join(',') : undefined,
-      propIds: 'prop_ids' in fields ? (fields.prop_ids || []).join(',') : undefined,
+      characterIds: hasDefinedField(fields, 'character_ids') ? ((fields.character_ids as number[]) || []).join(',') : undefined,
+      propIds: hasDefinedField(fields, 'prop_ids') ? ((fields.prop_ids as number[]) || []).join(',') : undefined,
     })
     return { message: `Storyboard ${storyboard_id} updated` }
   },
 })
 
-export const storyboardTools = { readStoryboardContext, saveStoryboards, updateStoryboard }
+/** 仅写 video_prompt，供 prompt_generator 使用，从 schema 上杜绝误改 description/atmosphere */
+const updateStoryboardVideoPrompt = createTool({
+  id: 'update_storyboard_video_prompt',
+  description: 'Save video_prompt for one storyboard shot. Only updates video_prompt; cannot change description, atmosphere, or other fields.',
+  inputSchema: z.object({
+    storyboard_id: z.number(),
+    video_prompt: z.string().min(1),
+  }),
+  execute: async ({ storyboard_id, video_prompt }, context) => {
+    const ids = requireIds(context)
+    if ('error' in ids) return ids
+    const { episodeId } = ids
+    const [storyboard] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, storyboard_id))
+    if (!storyboard) return { error: `Storyboard ${storyboard_id} not found` }
+    if (storyboard.episodeId !== episodeId) {
+      return { error: `Storyboard ${storyboard_id} does not belong to episode ${episodeId}` }
+    }
+    logTaskProgress('StoryboardTool', 'update-video-prompt-begin', {
+      episodeId,
+      storyboardId: storyboard_id,
+    })
+    await db.update(schema.storyboards).set({
+      videoPrompt: video_prompt,
+      updatedAt: now(),
+    }).where(eq(schema.storyboards.id, storyboard_id))
+    logTaskSuccess('StoryboardTool', 'update-video-prompt-complete', {
+      episodeId,
+      storyboardId: storyboard_id,
+      updatedFields: ['updatedAt', 'videoPrompt'],
+    })
+    return { message: `Storyboard ${storyboard_id} video_prompt updated` }
+  },
+})
+
+export const storyboardTools = {
+  readStoryboardContext,
+  saveStoryboards,
+  updateStoryboard,
+  updateStoryboardVideoPrompt,
+}

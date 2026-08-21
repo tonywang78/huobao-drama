@@ -60,4 +60,4 @@ description: 视频提示词规范 — 根据分镜段落内容生成按时间�
 
 ## 保存
 
-调用 `update_storyboard` 仅更新该分镜段落的 `video_prompt` 字段，不要改动其他字段，不要重新拆分整集。
+调用 `update_storyboard_video_prompt` 保存该分镜段落的 `video_prompt`（参数仅 `storyboard_id` + `video_prompt`）。不要调用 `update_storyboard`，不要改动其他字段，不要重新拆分整集。

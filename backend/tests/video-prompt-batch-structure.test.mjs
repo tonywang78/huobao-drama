@@ -17,7 +17,7 @@ test('video prompt batch service runs per-shot async agent loop', () => {
   // 逐个分镜调用 prompt_generator，以落库结果判定成败
   assert.match(svc, /mastra\.getAgent\('prompt_generator'\)/)
   assert.match(svc, /read_storyboard_context/)
-  assert.match(svc, /update_storyboard/)
+  assert.match(svc, /update_storyboard_video_prompt/)
   assert.match(svc, /fresh\?\.videoPrompt/)
   // 进度跟踪与文本模型覆盖
   assert.match(svc, /current_storyboard_id/)
