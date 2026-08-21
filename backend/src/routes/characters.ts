@@ -1,11 +1,12 @@
 import { Hono } from 'hono'
 import { and, eq } from 'drizzle-orm'
 import { db, getInsertId, schema } from '../db/index.js'
-import { success, created, badRequest, now } from '../utils/response.js'
+import { success, created, badRequest, notFound, now } from '../utils/response.js'
 import { toSnakeCase } from '../utils/transform.js'
 import { generateImage } from '../services/generation.js'
 import { getDramaStylePrompt } from '../services/style-preset.js'
 import { ensureCharacterFinalPrompt } from '../services/final-prompt.js'
+import { hardDeleteCharacter } from '../utils/asset-hard-delete.js'
 import { logTaskError, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
 
 const app = new Hono()
@@ -70,10 +71,12 @@ app.put('/:id', async (c) => {
   return success(c)
 })
 
-// DELETE /characters/:id
+// DELETE /characters/:id — 硬删除（级联清理集关联 / 分镜绑定 / 生成任务）
 app.delete('/:id', async (c) => {
   const id = Number(c.req.param('id'))
-  await db.update(schema.characters).set({ deletedAt: now() }).where(eq(schema.characters.id, id))
+  const [char] = await db.select().from(schema.characters).where(eq(schema.characters.id, id))
+  if (!char) return notFound(c, '角色不存在')
+  await hardDeleteCharacter(id)
   return success(c)
 })
 

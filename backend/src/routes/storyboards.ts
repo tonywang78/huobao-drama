@@ -161,12 +161,13 @@ app.put('/:id', async (c) => {
   return success(c)
 })
 
-// DELETE /storyboards/:id
+// DELETE /storyboards/:id — 同时清理角色/道具绑定与关联 sys_task（视频生成记录）
 app.delete('/:id', async (c) => {
   const id = Number(c.req.param('id'))
   logTaskStart('StoryboardAPI', 'delete', { storyboardId: id })
   await db.delete(schema.storyboardCharacters).where(eq(schema.storyboardCharacters.storyboardId, id))
   await db.delete(schema.storyboardProps).where(eq(schema.storyboardProps.storyboardId, id))
+  await db.delete(schema.sysTask).where(eq(schema.sysTask.storyboardId, id))
   await db.delete(schema.storyboards).where(eq(schema.storyboards.id, id))
   logTaskSuccess('StoryboardAPI', 'delete', { storyboardId: id })
   return success(c)

@@ -1,11 +1,12 @@
 import { Hono } from 'hono'
 import { and, eq } from 'drizzle-orm'
 import { db, getInsertId, schema } from '../db/index.js'
-import { success, created, badRequest, now } from '../utils/response.js'
+import { success, created, badRequest, notFound, now } from '../utils/response.js'
 import { toSnakeCase } from '../utils/transform.js'
 import { generateImage } from '../services/generation.js'
 import { getDramaStylePrompt } from '../services/style-preset.js'
 import { ensurePropFinalPrompt } from '../services/final-prompt.js'
+import { hardDeleteProp } from '../utils/asset-hard-delete.js'
 import { logTaskError, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
 
 const app = new Hono()
@@ -38,10 +39,12 @@ app.post('/', async (c) => {
   return created(c, toSnakeCase(row))
 })
 
-// DELETE /props/:id — 软删除
+// DELETE /props/:id — 硬删除（级联清理集关联 / 分镜绑定 / 生成任务）
 app.delete('/:id', async (c) => {
   const id = Number(c.req.param('id'))
-  await db.update(schema.props).set({ deletedAt: now(), updatedAt: now() }).where(eq(schema.props.id, id))
+  const [prop] = await db.select().from(schema.props).where(eq(schema.props.id, id))
+  if (!prop) return notFound(c, '道具不存在')
+  await hardDeleteProp(id)
   return success(c)
 })
 

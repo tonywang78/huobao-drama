@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { db, getInsertId, schema } from '../../db/index.js'
 import { eq } from 'drizzle-orm'
 import { now } from '../../utils/response.js'
+import { linkCharToEpisode, linkPropToEpisode, linkSceneToEpisode } from '../../utils/episode-assets.js'
 import { logTaskProgress, logTaskSuccess } from '../../utils/task-logger.js'
 import { getDramaId, getEpisodeId } from '../context.js'
 
@@ -71,7 +72,7 @@ async function validateStoryboardBindings(episodeId: number, dramaId: number, sc
     if (!scene || scene.dramaId !== dramaId || scene.deletedAt) {
       throw new Error(`scene_id ${sceneId} 不属于当前项目`)
     }
-    await db.insert(schema.episodeScenes).values({ episodeId, sceneId, createdAt: now() })
+    await linkSceneToEpisode(episodeId, sceneId)
   }
 
   const uniqueCharacterIds = [...new Set((characterIds || []).filter(Boolean))]
@@ -81,7 +82,7 @@ async function validateStoryboardBindings(episodeId: number, dramaId: number, sc
     if (!character || character.dramaId !== dramaId || character.deletedAt) {
       throw new Error(`character_id ${characterId} 不属于当前项目`)
     }
-    await db.insert(schema.episodeCharacters).values({ episodeId, characterId, createdAt: now() })
+    await linkCharToEpisode(episodeId, characterId)
   }
 
   const uniquePropIds = [...new Set((propIds || []).filter(Boolean))]
@@ -91,7 +92,7 @@ async function validateStoryboardBindings(episodeId: number, dramaId: number, sc
     if (!prop || prop.dramaId !== dramaId || prop.deletedAt) {
       throw new Error(`prop_id ${propId} 不属于当前项目`)
     }
-    await db.insert(schema.episodeProps).values({ episodeId, propId, createdAt: now() })
+    await linkPropToEpisode(episodeId, propId)
   }
 }
 

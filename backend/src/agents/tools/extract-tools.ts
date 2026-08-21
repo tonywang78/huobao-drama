@@ -11,41 +11,11 @@ import { createTool } from '@mastra/core/tools'
 import type { ToolExecutionContext } from '@mastra/core/tools'
 import { z } from 'zod'
 import { db, getInsertId, schema } from '../../db/index.js'
-import { eq, and } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { now } from '../../utils/response.js'
+import { linkCharToEpisode, linkPropToEpisode, linkSceneToEpisode } from '../../utils/episode-assets.js'
 import { logTaskProgress, logTaskSuccess } from '../../utils/task-logger.js'
 import { getDramaId, getEpisodeId } from '../context.js'
-
-// ─── 关联辅助 ────────────────────────────────────────────────
-async function linkCharToEpisode(episodeId: number, characterId: number) {
-  const ts = now()
-  const existing = await db.select().from(schema.episodeCharacters)
-    .where(and(eq(schema.episodeCharacters.episodeId, episodeId), eq(schema.episodeCharacters.characterId, characterId)))
-
-  if (!existing.length) {
-    await db.insert(schema.episodeCharacters).values({ episodeId, characterId, createdAt: ts })
-  }
-}
-
-async function linkSceneToEpisode(episodeId: number, sceneId: number) {
-  const ts = now()
-  const existing = await db.select().from(schema.episodeScenes)
-    .where(and(eq(schema.episodeScenes.episodeId, episodeId), eq(schema.episodeScenes.sceneId, sceneId)))
-
-  if (!existing.length) {
-    await db.insert(schema.episodeScenes).values({ episodeId, sceneId, createdAt: ts })
-  }
-}
-
-async function linkPropToEpisode(episodeId: number, propId: number) {
-  const ts = now()
-  const existing = await db.select().from(schema.episodeProps)
-    .where(and(eq(schema.episodeProps.episodeId, episodeId), eq(schema.episodeProps.propId, propId)))
-
-  if (!existing.length) {
-    await db.insert(schema.episodeProps).values({ episodeId, propId, createdAt: ts })
-  }
-}
 
 // ─── 名字归一化（近名去重） ───────────────────────────────────
 // 提取时同一角色/道具可能出现不同书写形式（如「林小雨」与「林小雨（主角）」、

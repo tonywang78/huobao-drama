@@ -257,16 +257,20 @@
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               </div>
               <div class="empty-title">开始提取资产</div>
-              <div class="empty-desc">角色、场景和道具会在提取后显示在这里，可分别单独提取，也可一键并行提取全部。</div>
-              <button class="btn btn-primary" :disabled="!!extractingTargets.length" @click="doExtractAll">
-                <Loader2 v-if="extractingTargets.length" :size="13" class="animate-spin" />
-                <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                {{ extractingTargets.length ? `正在提取${extractingLabels}…` : '开始提取' }}
-              </button>
+              <div class="empty-desc">角色、场景和道具会在提取后显示在这里，可分别单独提取，也可一键并行提取全部。也可从项目素材库选入其他集已有资产。</div>
+              <div class="asset-empty-actions">
+                <button class="btn btn-primary" :disabled="!!extractingTargets.length" @click="doExtractAll">
+                  <Loader2 v-if="extractingTargets.length" :size="13" class="animate-spin" />
+                  <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                  {{ extractingTargets.length ? `正在提取${extractingLabels}…` : '开始提取' }}
+                </button>
+                <button class="btn" @click="openAssetPick('character')">从素材库选入</button>
+              </div>
             </div>
             <template v-else>
             <div class="asset-section-title">
               角色
+              <button class="asset-add-btn" @click="openAssetPick('character')">从素材库选入</button>
               <button class="asset-add-btn" @click="openAssetCreate('character')"><Plus :size="11" /> 新增</button>
             </div>
             <template v-if="visualChars.length">
@@ -281,7 +285,7 @@
                 @keydown.enter.prevent="openAssetDetail('character', c)"
                 @keydown.space.prevent="openAssetDetail('character', c)"
               >
-                <button class="asset-del-btn" title="删除角色" @click.stop="askDeleteAsset('character', c)"><X :size="11" /></button>
+                <button class="asset-del-btn" title="从本集移除角色" @click.stop="askDeleteAsset('character', c)"><X :size="11" /></button>
                 <div class="character-asset-main">
                   <div class="character-asset-overview"><div class="character-portrait">
                       <img
@@ -333,6 +337,7 @@
 
             <div class="asset-section-title">
               场景
+              <button class="asset-add-btn" @click="openAssetPick('scene')">从素材库选入</button>
               <button class="asset-add-btn" @click="openAssetCreate('scene')"><Plus :size="11" /> 新增</button>
             </div>
             <template v-if="scenes.length">
@@ -347,7 +352,7 @@
                 @keydown.enter.prevent="openAssetDetail('scene', s)"
                 @keydown.space.prevent="openAssetDetail('scene', s)"
               >
-                <button class="asset-del-btn" title="删除场景" @click.stop="askDeleteAsset('scene', s)"><X :size="11" /></button>
+                <button class="asset-del-btn" title="从本集移除场景" @click.stop="askDeleteAsset('scene', s)"><X :size="11" /></button>
                 <div class="asset-cover wide">
                   <img
                     v-if="s.image_url || s.imageUrl"
@@ -389,6 +394,7 @@
 
             <div class="asset-section-title">
               道具
+              <button class="asset-add-btn" @click="openAssetPick('prop')">从素材库选入</button>
               <button class="asset-add-btn" @click="openAssetCreate('prop')"><Plus :size="11" /> 新增</button>
             </div>
             <div v-if="propItems.length" class="asset-grid">
@@ -402,7 +408,7 @@
                 @keydown.enter.prevent="openAssetDetail('prop', p)"
                 @keydown.space.prevent="openAssetDetail('prop', p)"
               >
-                <button class="asset-del-btn" title="删除道具" @click.stop="askDeleteAsset('prop', p)"><X :size="11" /></button>
+                <button class="asset-del-btn" title="从本集移除道具" @click.stop="askDeleteAsset('prop', p)"><X :size="11" /></button>
                 <div class="asset-cover wide">
                   <img
                     v-if="p.image_url || p.imageUrl"
@@ -535,6 +541,16 @@
                         <span class="shot-flag flag-video" :class="{ on: hasVid(sb) }" :title="hasVid(sb) ? '已生成视频' : '未生成视频'"><i class="dot"></i>视</span>
                       </div>
                     </div>
+                    <span
+                      v-if="!sbSelectMode"
+                      role="button"
+                      tabindex="-1"
+                      class="asset-del-btn shot-del-btn"
+                      title="删除分镜"
+                      @click.stop="askDeleteStoryboard(sb, i)"
+                    >
+                      <X :size="11" />
+                    </span>
                   </button>
                 </div>
                 <div v-if="sbSelectMode" class="shot-select-bar">
@@ -1436,7 +1452,7 @@
 
           <footer class="dialog-foot asset-detail-foot">
             <div class="asset-detail-secondary-actions">
-              <button class="btn btn-danger" @click="askDeleteAsset(assetDetail.type, assetDetail.item)">删除</button>
+              <button class="btn btn-danger" @click="askDeleteAsset(assetDetail.type, assetDetail.item)">从本集移除</button>
               <button class="btn" @click="closeAssetDetail">关闭</button>
             </div>
             <div class="asset-detail-primary-actions">
@@ -1559,13 +1575,77 @@
         </div>
       </div>
 
+      <div v-if="assetPick.open" class="overlay" @click.self="assetPick.open = false">
+        <div class="dialog asset-pick-dialog">
+          <header class="dialog-head">
+            <h2 class="dialog-title">从素材库选入{{ assetPickTypeLabel }}</h2>
+            <button class="btn btn-ghost btn-icon" @click="assetPick.open = false">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </header>
+          <div class="dialog-body asset-pick-body">
+            <div v-if="assetPick.loading" class="asset-pick-empty">
+              <Loader2 :size="18" class="animate-spin" style="color:var(--accent)" />
+              <span>加载可选项…</span>
+            </div>
+            <div v-else-if="!assetPick.items.length" class="asset-pick-empty">
+              项目素材库暂无未挂本集的{{ assetPickTypeLabel }}
+            </div>
+            <div v-else class="asset-pick-list">
+              <label
+                v-for="item in assetPick.items"
+                :key="item.id"
+                class="asset-pick-row"
+                :class="{ on: assetPick.selectedIds.includes(item.id) }"
+              >
+                <input
+                  type="checkbox"
+                  :checked="assetPick.selectedIds.includes(item.id)"
+                  @change="toggleAssetPick(item.id)"
+                />
+                <span class="asset-pick-thumb">
+                  <img v-if="assetImageSrc(item)" :src="thumbOf(assetImageSrc(item))" loading="lazy" @error="thumbFallback($event, assetImageSrc(item))" />
+                  <span v-else class="asset-pick-thumb-empty">无图</span>
+                </span>
+                <span class="asset-pick-meta">
+                  <strong>{{ item.name || item.location || `#${item.id}` }}</strong>
+                  <span class="dim">{{ assetPickSubtitle(item) }}</span>
+                </span>
+              </label>
+            </div>
+          </div>
+          <footer class="dialog-foot">
+            <button class="btn" @click="assetPick.open = false">取消</button>
+            <button
+              class="btn btn-primary"
+              :disabled="assetPick.saving || !assetPick.selectedIds.length"
+              @click="confirmAssetPick"
+            >
+              <Loader2 v-if="assetPick.saving" :size="12" class="animate-spin" />
+              选入（{{ assetPick.selectedIds.length }}）
+            </button>
+          </footer>
+        </div>
+      </div>
+
       <ConfirmDialog
         :open="assetDelete.open"
-        :title="`删除${assetDeleteTypeLabel}`"
-        :message="`确定删除${assetDeleteTypeLabel}「${assetDeleteName}」吗？将从本剧所有集中移除。`"
+        :title="`从本集移除${assetDeleteTypeLabel}`"
+        :message="`确定将${assetDeleteTypeLabel}「${assetDeleteName}」从本集移除吗？其他集与项目素材库仍保留。`"
+        confirm-text="移除"
+        loading-text="移除中..."
         :loading="assetDelete.loading"
         @confirm="confirmDeleteAsset"
         @cancel="assetDelete.open = false"
+      />
+
+      <ConfirmDialog
+        :open="sbDelete.open"
+        title="删除分镜"
+        :message="`确定删除分镜 #${String(sbDelete.index + 1).padStart(2, '0')} 吗？相关视频生成记录将一并删除。`"
+        :loading="sbDelete.loading"
+        @confirm="confirmDeleteStoryboard"
+        @cancel="sbDelete.open = false"
       />
     </main>
     </div>
@@ -1791,7 +1871,59 @@ async function saveAssetCreate() {
   }
 }
 
-// ─── 删除资产 ────────────────────────────────────────────────
+// ─── 从素材库选入（挂链，不新建） ────────────────────────────
+const assetPick = ref({ open: false, type: 'character', loading: false, saving: false, items: [], selectedIds: [] })
+const assetPickTypeLabel = computed(() => ASSET_TYPE_SHORT[assetPick.value.type] || '资产')
+
+function assetPickSubtitle(item) {
+  if (assetPick.value.type === 'character') return item.role || '角色'
+  if (assetPick.value.type === 'scene') return [item.time, item.prompt || item.description].filter(Boolean).join(' · ') || '场景'
+  return item.type || item.description || '道具'
+}
+
+async function openAssetPick(type) {
+  if (!epId.value) {
+    toast.warning('剧集尚未加载完成')
+    return
+  }
+  assetPick.value = { open: true, type, loading: true, saving: false, items: [], selectedIds: [] }
+  try {
+    const items = await episodeAPI.availableAssets(epId.value, type)
+    assetPick.value.items = Array.isArray(items) ? items : []
+  } catch (e) {
+    toast.error(e.message || '加载素材库失败')
+    assetPick.value.open = false
+  } finally {
+    assetPick.value.loading = false
+  }
+}
+
+function toggleAssetPick(id) {
+  const ids = assetPick.value.selectedIds
+  assetPick.value.selectedIds = ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id]
+}
+
+async function confirmAssetPick() {
+  const { type, selectedIds, saving } = assetPick.value
+  if (!selectedIds.length || saving || !epId.value) return
+  assetPick.value.saving = true
+  try {
+    const payload =
+      type === 'character' ? { character_ids: selectedIds }
+        : type === 'scene' ? { scene_ids: selectedIds }
+          : { prop_ids: selectedIds }
+    await episodeAPI.linkAssets(epId.value, payload)
+    toast.success(`已选入 ${selectedIds.length} 个${assetPickTypeLabel.value}`)
+    assetPick.value.open = false
+    await refresh()
+  } catch (e) {
+    toast.error(e.message || '选入失败')
+  } finally {
+    assetPick.value.saving = false
+  }
+}
+
+// ─── 从本集移除资产（断链，不软删实体） ──────────────────────
 const assetDelete = ref({ open: false, type: '', item: null, loading: false })
 const assetDeleteTypeLabel = computed(() => ASSET_TYPE_SHORT[assetDelete.value.type] || '资产')
 const assetDeleteName = computed(() => assetDelete.value.item?.name || assetDelete.value.item?.location || '')
@@ -1802,13 +1934,13 @@ function askDeleteAsset(type, item) {
 
 async function confirmDeleteAsset() {
   const { type, item } = assetDelete.value
-  if (!item || assetDelete.value.loading) return
+  if (!item || assetDelete.value.loading || !epId.value) return
   assetDelete.value.loading = true
   try {
-    if (type === 'character') await characterAPI.del(item.id)
-    else if (type === 'scene') await sceneAPI.del(item.id)
-    else await propAPI.del(item.id)
-    toast.success(`已删除${assetDeleteTypeLabel.value}`)
+    if (type === 'character') await episodeAPI.unlinkCharacter(epId.value, item.id)
+    else if (type === 'scene') await episodeAPI.unlinkScene(epId.value, item.id)
+    else await episodeAPI.unlinkProp(epId.value, item.id)
+    toast.success(`已从本集移除${assetDeleteTypeLabel.value}`)
     assetDelete.value.open = false
     if (assetDetail.value.open && assetDetail.value.type === type && assetDetail.value.item?.id === item.id) closeAssetDetail()
     await refresh()
@@ -1816,6 +1948,41 @@ async function confirmDeleteAsset() {
     toast.error(e.message)
   } finally {
     assetDelete.value.loading = false
+  }
+}
+
+// ─── 删除分镜（连带清理关联 sys_task，由后端 DELETE 完成）───
+const sbDelete = ref({ open: false, item: null, index: 0, loading: false })
+
+function askDeleteStoryboard(sb, index) {
+  if (!sb?.id || sbSelectMode.value) return
+  sbDelete.value = { open: true, item: sb, index: Number(index) || 0, loading: false }
+}
+
+async function confirmDeleteStoryboard() {
+  const sb = sbDelete.value.item
+  if (!sb?.id || sbDelete.value.loading) return
+  sbDelete.value.loading = true
+  try {
+    const idx = sbs.value.findIndex(s => s.id === sb.id)
+    const next = idx >= 0 ? (sbs.value[idx + 1] || sbs.value[idx - 1] || null) : null
+    await storyboardAPI.del(sb.id)
+    pendingVideoIds.value = pendingVideoIds.value.filter(id => id !== sb.id)
+    videoPromptGeneratingIds.value = videoPromptGeneratingIds.value.filter(id => id !== sb.id)
+    selectedSbIds.value = selectedSbIds.value.filter(id => id !== sb.id)
+    if (failedVideoMessages.value[sb.id]) {
+      const nextFailed = { ...failedVideoMessages.value }
+      delete nextFailed[sb.id]
+      failedVideoMessages.value = nextFailed
+    }
+    selectedSb.value = next && next.id !== sb.id ? next : null
+    sbDelete.value.open = false
+    toast.success('已删除分镜')
+    await refresh()
+  } catch (e) {
+    toast.error(e.message || '删除失败')
+  } finally {
+    sbDelete.value.loading = false
   }
 }
 
@@ -4643,7 +4810,9 @@ onMounted(async () => { await refresh(); loadConfigs(); syncExtractStatus() })
 }
 .asset-del-btn:hover { background: var(--action-danger); }
 .character-asset-card:hover .asset-del-btn,
-.asset-click-card:hover .asset-del-btn { opacity: 1; }
+.asset-click-card:hover .asset-del-btn,
+.storyboard-shot-card:hover .shot-del-btn { opacity: 1; }
+.shot-del-btn { top: 6px; right: 6px; }
 
 /* 分镜勾选：选择后批量生成视频提示词 */
 .shot-check {
@@ -4722,6 +4891,72 @@ onMounted(async () => { await refresh(); loadConfigs(); syncExtractStatus() })
 /* 新增资产弹窗 */
 .asset-create-dialog { width: 440px; max-width: calc(100vw - 48px); }
 .asset-create-body { display: flex; flex-direction: column; gap: 10px; }
+
+/* 从素材库选入 */
+.asset-pick-dialog { width: 480px; max-width: calc(100vw - 48px); }
+.asset-pick-body { max-height: min(60vh, 420px); overflow: auto; }
+.asset-pick-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 120px;
+  color: var(--text-3);
+  font-size: 13px;
+}
+.asset-pick-list { display: flex; flex-direction: column; gap: 6px; }
+.asset-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-1, var(--surface-outline));
+  cursor: pointer;
+}
+.asset-pick-row.on {
+  border-color: var(--accent-text);
+  background: var(--accent-bg);
+}
+.asset-pick-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--surface-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.asset-pick-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.asset-pick-thumb-empty { font-size: 10px; color: var(--text-3); }
+.asset-pick-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.asset-pick-meta strong {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.asset-pick-meta .dim {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.asset-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 4px;
+}
 
 /* Asset grid */
 .asset-section-title {

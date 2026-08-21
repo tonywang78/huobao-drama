@@ -3,6 +3,14 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { db, getInsertId, schema } from '../db/index.js'
 import { success, notFound, badRequest, now } from '../utils/response.js'
 import { toSnakeCaseArray, toSnakeCase } from '../utils/transform.js'
+import {
+  linkCharToEpisode,
+  linkPropToEpisode,
+  linkSceneToEpisode,
+  unlinkCharFromEpisode,
+  unlinkPropFromEpisode,
+  unlinkSceneFromEpisode,
+} from '../utils/episode-assets.js'
 import { getActiveConfigId } from '../services/ai.js'
 import { EXTRACT_TARGETS, getExtractionStatus, startExtraction, type ExtractTarget } from '../services/extraction.js'
 import { getVideoPromptBatchStatus, startVideoPromptBatch } from '../services/video-prompts.js'
@@ -123,6 +131,117 @@ app.get('/:id/props', async (c) => {
   const allProps = await db.select().from(schema.props)
   const result = allProps.filter(p => propIds.includes(p.id) && !p.deletedAt)
   return success(c, toSnakeCaseArray(result))
+})
+
+// GET /episodes/:id/available-assets?type=character|scene|prop — 本剧未挂本集的资产
+app.get('/:id/available-assets', async (c) => {
+  const episodeId = Number(c.req.param('id'))
+  const type = String(c.req.query('type') || '')
+  if (!['character', 'scene', 'prop'].includes(type)) {
+    return badRequest(c, 'type 必须是 character / scene / prop')
+  }
+  const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, episodeId))
+  if (!ep || ep.deletedAt) return notFound(c, '剧集不存在')
+
+  if (type === 'character') {
+    const links = await db.select().from(schema.episodeCharacters)
+      .where(eq(schema.episodeCharacters.episodeId, episodeId))
+    const linked = new Set(links.map(l => l.characterId))
+    const all = await db.select().from(schema.characters)
+      .where(and(eq(schema.characters.dramaId, ep.dramaId), isNull(schema.characters.deletedAt)))
+    return success(c, toSnakeCaseArray(all.filter(ch => !linked.has(ch.id))))
+  }
+  if (type === 'scene') {
+    const links = await db.select().from(schema.episodeScenes)
+      .where(eq(schema.episodeScenes.episodeId, episodeId))
+    const linked = new Set(links.map(l => l.sceneId))
+    const all = await db.select().from(schema.scenes)
+      .where(and(eq(schema.scenes.dramaId, ep.dramaId), isNull(schema.scenes.deletedAt)))
+    return success(c, toSnakeCaseArray(all.filter(sc => !linked.has(sc.id))))
+  }
+  const links = await db.select().from(schema.episodeProps)
+    .where(eq(schema.episodeProps.episodeId, episodeId))
+  const linked = new Set(links.map(l => l.propId))
+  const all = await db.select().from(schema.props)
+    .where(and(eq(schema.props.dramaId, ep.dramaId), isNull(schema.props.deletedAt)))
+  return success(c, toSnakeCaseArray(all.filter(p => !linked.has(p.id))))
+})
+
+// POST /episodes/:id/link-assets — 将项目内已有资产幂等挂到本集
+app.post('/:id/link-assets', async (c) => {
+  const episodeId = Number(c.req.param('id'))
+  const body: any = await c.req.json().catch(() => ({}))
+  const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, episodeId))
+  if (!ep || ep.deletedAt) return notFound(c, '剧集不存在')
+
+  const toIds = (raw: unknown): number[] =>
+    Array.isArray(raw)
+      ? [...new Set(raw.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))]
+      : []
+  const characterIds = toIds(body.character_ids)
+  const sceneIds = toIds(body.scene_ids)
+  const propIds = toIds(body.prop_ids)
+  if (!characterIds.length && !sceneIds.length && !propIds.length) {
+    return badRequest(c, '至少提供一组 character_ids / scene_ids / prop_ids')
+  }
+
+  for (const characterId of characterIds) {
+    const [char] = await db.select().from(schema.characters).where(eq(schema.characters.id, characterId))
+    if (!char || char.dramaId !== ep.dramaId || char.deletedAt) {
+      return badRequest(c, `角色 ${characterId} 不属于当前项目或不存在`)
+    }
+    await linkCharToEpisode(episodeId, characterId)
+  }
+  for (const sceneId of sceneIds) {
+    const [scene] = await db.select().from(schema.scenes).where(eq(schema.scenes.id, sceneId))
+    if (!scene || scene.dramaId !== ep.dramaId || scene.deletedAt) {
+      return badRequest(c, `场景 ${sceneId} 不属于当前项目或不存在`)
+    }
+    await linkSceneToEpisode(episodeId, sceneId)
+  }
+  for (const propId of propIds) {
+    const [prop] = await db.select().from(schema.props).where(eq(schema.props.id, propId))
+    if (!prop || prop.dramaId !== ep.dramaId || prop.deletedAt) {
+      return badRequest(c, `道具 ${propId} 不属于当前项目或不存在`)
+    }
+    await linkPropToEpisode(episodeId, propId)
+  }
+
+  return success(c, {
+    linked_characters: characterIds.length,
+    linked_scenes: sceneIds.length,
+    linked_props: propIds.length,
+  })
+})
+
+// DELETE /episodes/:id/characters/:assetId — 仅断链，不软删实体
+app.delete('/:id/characters/:assetId', async (c) => {
+  const episodeId = Number(c.req.param('id'))
+  const assetId = Number(c.req.param('assetId'))
+  const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, episodeId))
+  if (!ep || ep.deletedAt) return notFound(c, '剧集不存在')
+  await unlinkCharFromEpisode(episodeId, assetId)
+  return success(c)
+})
+
+// DELETE /episodes/:id/scenes/:assetId
+app.delete('/:id/scenes/:assetId', async (c) => {
+  const episodeId = Number(c.req.param('id'))
+  const assetId = Number(c.req.param('assetId'))
+  const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, episodeId))
+  if (!ep || ep.deletedAt) return notFound(c, '剧集不存在')
+  await unlinkSceneFromEpisode(episodeId, assetId)
+  return success(c)
+})
+
+// DELETE /episodes/:id/props/:assetId
+app.delete('/:id/props/:assetId', async (c) => {
+  const episodeId = Number(c.req.param('id'))
+  const assetId = Number(c.req.param('assetId'))
+  const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, episodeId))
+  if (!ep || ep.deletedAt) return notFound(c, '剧集不存在')
+  await unlinkPropFromEpisode(episodeId, assetId)
+  return success(c)
 })
 
 // POST /episodes/:id/extract — 异步提取资产（target: characters | scenes | props），立即返回，前端轮询状态

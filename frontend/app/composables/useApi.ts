@@ -50,6 +50,12 @@ export const episodeAPI = {
   characters: (id: number) => api.get(`/episodes/${id}/characters`),
   scenes: (id: number) => api.get(`/episodes/${id}/scenes`),
   props: (id: number) => api.get(`/episodes/${id}/props`),
+  availableAssets: (id: number, type: 'character' | 'scene' | 'prop') => api.get(`/episodes/${id}/available-assets?type=${type}`),
+  linkAssets: (id: number, data: { character_ids?: number[]; scene_ids?: number[]; prop_ids?: number[] }) =>
+    api.post(`/episodes/${id}/link-assets`, data),
+  unlinkCharacter: (episodeId: number, characterId: number) => api.del(`/episodes/${episodeId}/characters/${characterId}`),
+  unlinkScene: (episodeId: number, sceneId: number) => api.del(`/episodes/${episodeId}/scenes/${sceneId}`),
+  unlinkProp: (episodeId: number, propId: number) => api.del(`/episodes/${episodeId}/props/${propId}`),
   storyboards: (id: number) => api.get(`/episodes/${id}/storyboards`),
   pipelineStatus: (id: number) => api.get(`/episodes/${id}/pipeline-status`),
   extract: (id: number, target: string, model?: string, configId?: number) => api.post(`/episodes/${id}/extract`, { target, model: model || undefined, config_id: configId || undefined }),

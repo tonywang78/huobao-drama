@@ -208,6 +208,9 @@
                 @keydown.enter.prevent="openEdit(m)"
                 @keydown.space.prevent="openEdit(m)"
               >
+                <button class="asset-del-btn" type="button" title="删除素材" @click.stop="askDeleteMaterial(m)">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
                 <div class="character-asset-main">
                   <div class="character-asset-overview">
                     <div class="character-portrait">
@@ -261,6 +264,9 @@
                 @keydown.enter.prevent="openEdit(m)"
                 @keydown.space.prevent="openEdit(m)"
               >
+                <button class="asset-del-btn" type="button" title="删除素材" @click.stop="askDeleteMaterial(m)">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
                 <div class="asset-cover wide">
                   <img v-if="matHasImage(m)" :src="thumbOf(assetSrc(m))" class="previewable-image" loading="lazy" @error="thumbFallback($event, assetSrc(m))" @click.stop="openAssetViewer(m)" />
                   <div v-else class="asset-cover-empty">
@@ -468,6 +474,7 @@
 
           <footer class="dialog-foot mat-detail-foot">
             <div class="mat-detail-secondary-actions">
+              <button class="btn btn-danger" @click="askDeleteMaterial(editTarget)">删除素材</button>
               <button class="btn" @click="closeEdit">关闭</button>
             </div>
             <div class="mat-detail-primary-actions">
@@ -545,6 +552,14 @@
       :loading="deletingEpisode"
       @confirm="confirmDelEpisode"
       @cancel="episodeToDelete = null"
+    />
+    <ConfirmDialog
+      :open="!!materialToDelete"
+      :title="`删除${materialToDelete?.kind || '素材'}`"
+      :message="`确定永久删除${materialToDelete?.kind || '素材'}「${materialDeleteName}」吗？将从本剧所有集移除，且不可恢复。`"
+      :loading="deletingMaterial"
+      @confirm="confirmDeleteMaterial"
+      @cancel="materialToDelete = null"
     />
   </div>
 </template>
@@ -672,6 +687,36 @@ async function confirmDelEpisode() {
   }
 }
 
+const materialToDelete = ref(null)
+const deletingMaterial = ref(false)
+const materialDeleteName = computed(() =>
+  materialToDelete.value?.name || materialToDelete.value?.location || '',
+)
+
+function askDeleteMaterial(m) {
+  if (!m) return
+  materialToDelete.value = m
+}
+
+async function confirmDeleteMaterial() {
+  const m = materialToDelete.value
+  if (!m || deletingMaterial.value) return
+  deletingMaterial.value = true
+  try {
+    if (m.kindKey === 'character') await characterAPI.del(m.id)
+    else if (m.kindKey === 'scene') await sceneAPI.del(m.id)
+    else await propAPI.del(m.id)
+    toast.success(`已永久删除${m.kind || '素材'}`)
+    materialToDelete.value = null
+    if (editTarget.value && editTarget.value.kindKey === m.kindKey && editTarget.value.id === m.id) closeEdit()
+    await load()
+  } catch (e) {
+    toast.error(e.message || '删除失败')
+  } finally {
+    deletingMaterial.value = false
+  }
+}
+
 /* ===== 素材库 Tab ===== */
 const activeTab = ref('episodes')
 const assetTab = ref('all')
@@ -708,9 +753,10 @@ const materials = computed(() => {
   const d = drama.value
   if (!d) return []
   const list = []
-  for (const c of d.characters || []) list.push({ ...c, kind: '角色', kindKey: 'character' })
-  for (const s of d.scenes || []) list.push({ ...s, kind: '场景', kindKey: 'scene' })
-  for (const p of d.props || []) list.push({ ...p, kind: '道具', kindKey: 'prop' })
+  const alive = (m) => !(m.deleted_at || m.deletedAt)
+  for (const c of (d.characters || []).filter(alive)) list.push({ ...c, kind: '角色', kindKey: 'character' })
+  for (const s of (d.scenes || []).filter(alive)) list.push({ ...s, kind: '场景', kindKey: 'scene' })
+  for (const p of (d.props || []).filter(alive)) list.push({ ...p, kind: '道具', kindKey: 'prop' })
   return list.sort((a, b) => (KIND_ORDER[a.kindKey] - KIND_ORDER[b.kindKey]) || (a.id - b.id))
 })
 const visibleAssets = computed(() =>
@@ -1228,7 +1274,32 @@ onMounted(load)
 .asset-click-card,
 .character-asset-card {
   cursor: pointer;
+  position: relative;
 }
+.asset-del-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+}
+.asset-click-card:hover .asset-del-btn,
+.character-asset-card:hover .asset-del-btn,
+.asset-del-btn:focus-visible {
+  opacity: 1;
+}
+.asset-del-btn:hover { background: var(--action-danger, #c44); }
 .asset-click-card:focus-visible,
 .character-asset-card:focus-visible {
   outline: none;
