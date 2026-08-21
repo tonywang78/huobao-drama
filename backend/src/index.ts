@@ -21,6 +21,7 @@ import merge from './routes/merge.js'
 import skills from './routes/skills.js'
 import props from './routes/props.js'
 import { requestLogger, errorHandler } from './middleware/logger.js'
+import { resumeActiveTasks } from './services/generation.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const projectRoot = path.resolve(__dirname, '../..')
@@ -74,3 +75,14 @@ app.get('*', serveStatic({ root: distPath, path: 'index.html' }))
 const port = Number(process.env.PORT || 5679)
 console.log(`🚀 Huobao Drama TS server on http://localhost:${port}`)
 serve({ fetch: app.fetch, port })
+
+// watch/重启会打断内存中的 poll；把仍有远端 taskId 的任务续上
+resumeActiveTasks()
+  .then((r) => {
+    if (r.resumed || r.skipped) {
+      console.log(`♻️ Resumed generation polls: resumed=${r.resumed} skipped=${r.skipped}`)
+    }
+  })
+  .catch((err) => {
+    console.error('resumeActiveTasks failed:', err)
+  })

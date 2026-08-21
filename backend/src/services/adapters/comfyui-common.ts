@@ -48,6 +48,36 @@ const PLACEHOLDER_KEYS = [
   'ASPECT_RATIO',
 ] as const
 
+/**
+ * ComfyUI 官方 ResolutionSelector.aspect_ratio COMBO 枚举
+ * @see https://docs.comfy.org/built-in-nodes/ResolutionSelector
+ */
+const RESOLUTION_SELECTOR_ASPECT_RATIOS: Record<string, string> = {
+  '1:1': '1:1 (Square)',
+  '2:3': '2:3 (Portrait Photo)',
+  '3:2': '3:2 (Photo)',
+  '3:4': '3:4 (Portrait Standard)',
+  '4:3': '4:3 (Standard)',
+  '9:16': '9:16 (Portrait Widescreen)',
+  '16:9': '16:9 (Widescreen)',
+  '21:9': '21:9 (Ultrawide)',
+}
+
+/**
+ * 将业务短比例（如 `16:9`）转为 ResolutionSelector 官方 COMBO 标签。
+ * 已是带标签字符串、或未知值（如 adaptive）原样返回。
+ */
+export function formatAspectRatioForComfy(raw?: string | null): string {
+  const value = (raw ?? '').trim()
+  if (!value) return value
+  if (RESOLUTION_SELECTOR_ASPECT_RATIOS[value]) return RESOLUTION_SELECTOR_ASPECT_RATIOS[value]
+  const short = value.match(/^(\d+:\d+)\b/)?.[1]
+  if (short && RESOLUTION_SELECTOR_ASPECT_RATIOS[short] && /^\d+:\d+(\s+\(.+\))?$/.test(value)) {
+    return RESOLUTION_SELECTOR_ASPECT_RATIOS[short]
+  }
+  return value
+}
+
 /** 绑定 key → 取值 */
 function bindingValueMap(values: ComfyPlaceholderValues): Record<string, string | number | undefined> {
   const map: Record<string, string | number | undefined> = {
@@ -57,7 +87,7 @@ function bindingValueMap(values: ComfyPlaceholderValues): Record<string, string 
     height: values.height ?? 1024,
     seed: values.seed ?? Math.floor(Math.random() * 2 ** 32),
     duration: values.duration ?? 5,
-    aspectRatio: values.aspectRatio ?? '16:9',
+    aspectRatio: formatAspectRatioForComfy(values.aspectRatio ?? '16:9'),
   }
   const images = values.images || []
   images.forEach((name, i) => {
@@ -162,7 +192,7 @@ export function injectPlaceholders(
     HEIGHT: values.height ?? 1024,
     SEED: values.seed ?? Math.floor(Math.random() * 2 ** 32),
     DURATION: values.duration ?? 5,
-    ASPECT_RATIO: values.aspectRatio ?? '16:9',
+    ASPECT_RATIO: formatAspectRatioForComfy(values.aspectRatio ?? '16:9'),
   }
   const images = values.images || []
   images.forEach((name, i) => {

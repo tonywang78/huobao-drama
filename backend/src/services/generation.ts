@@ -138,6 +138,9 @@ export async function generateVideo(params: GenerateVideoParams): Promise<number
 
 type SysTaskRecord = typeof schema.sysTask.$inferSelect
 
+/** 进程内正在轮询的任务，避免重启恢复 / 重复 enqueue 时双开 poll */
+const activePollIds = new Set<number>()
+
 /** 仍可轮询 / 提交中的状态 */
 export function isCancellableTaskStatus(status: string | null | undefined): boolean {
   return status === 'processing' || status === 'pending'
@@ -178,6 +181,62 @@ async function resolveConfigForCancel(record: SysTaskRecord): Promise<AIConfig |
     }
   }
   return getActiveConfig(serviceType)
+}
+
+/**
+ * 服务启动时恢复仍在 processing/pending 且已有远端 taskId 的轮询。
+ * 只续 poll，绝不重新 buildGenerateRequest / 提交，避免重复扣费。
+ */
+export async function resumeActiveTasks(): Promise<{ resumed: number; skipped: number }> {
+  const rows = await db.select().from(schema.sysTask)
+    .where(inArray(schema.sysTask.status, ['processing', 'pending']))
+
+  let resumed = 0
+  let skipped = 0
+
+  for (const record of rows) {
+    if (!record.taskId) {
+      skipped++
+      logTaskWarn(taskLabel((record.type as TaskType) || 'video'), 'resume-skip-no-task-id', {
+        id: record.id,
+        provider: record.provider,
+      })
+      continue
+    }
+    if (activePollIds.has(record.id)) {
+      skipped++
+      continue
+    }
+
+    const config = await resolveConfigForCancel(record)
+    if (!config) {
+      skipped++
+      logTaskWarn(taskLabel(record.type as TaskType), 'resume-skip-no-config', {
+        id: record.id,
+        provider: record.provider,
+        taskId: record.taskId,
+      })
+      continue
+    }
+
+    logTaskProgress(taskLabel(record.type as TaskType), 'resume-poll', {
+      id: record.id,
+      provider: record.provider,
+      taskId: record.taskId,
+    })
+    pollTask(record, config, record.taskId).catch((err: any) => {
+      logTaskError(taskLabel(record.type as TaskType), 'resume-poll', {
+        id: record.id,
+        error: err?.message || String(err),
+      })
+    })
+    resumed++
+  }
+
+  if (resumed || skipped) {
+    logTaskProgress('SysTask', 'resume-active-tasks', { resumed, skipped, total: rows.length })
+  }
+  return { resumed, skipped }
 }
 
 /**
@@ -431,6 +490,12 @@ async function failTask(id: number, message: string) {
 }
 
 async function pollTask(record: SysTaskRecord, config: AIConfig, taskId: string) {
+  if (activePollIds.has(record.id)) {
+    logTaskWarn(taskLabel(record.type as TaskType), 'poll-already-running', { id: record.id, taskId })
+    return
+  }
+  activePollIds.add(record.id)
+
   const type = record.type as TaskType
   const label = taskLabel(type)
   const profile = POLL_PROFILES[type]
@@ -439,109 +504,113 @@ async function pollTask(record: SysTaskRecord, config: AIConfig, taskId: string)
   /** Comfy 取消后 history={} 且不在队列；连续确认两次再失败，避免刚入队瞬间误判 */
   let comfyGoneMisses = 0
 
-  for (let i = 0; i < profile.attempts; i++) {
-    if (profile.maxDurationMs && Date.now() - startedAt >= profile.maxDurationMs) {
-      await failTask(record.id, 'Timeout: Polling exceeded 10 minutes')
-      return
-    }
-    await new Promise(r => setTimeout(r, profile.intervalMs))
-    if (!(await isActiveTask(record.id))) {
-      logTaskProgress(label, 'poll-cancelled', { id: record.id, taskId, attempt: i + 1 })
-      return
-    }
-    try {
-      const { url, method, headers } = adapter.buildPollRequest(config, taskId)
-      logTaskProgress(label, 'poll-request', {
-        id: record.id,
-        taskId,
-        provider: config.provider,
-        method,
-        url: redactUrl(url),
-        attempt: i + 1,
-      })
-      const remainingMs = profile.maxDurationMs
-        ? Math.max(1_000, profile.maxDurationMs - (Date.now() - startedAt))
-        : 600_000
-      const resp = await fetch(url, {
-        method,
-        headers,
-        signal: AbortSignal.timeout(remainingMs),
-      })
-      if (!resp.ok) continue
-      const result = await resp.json() as any
-
-      // 图片/视频 PollResponse 结构不同，这里统一按 any 取值后按 type 分支
-      // 第三参 taskId 供 ComfyUI 等从 history 条目拼 /view URL
-      const pollResp: any = await Promise.resolve(adapter.parsePollResponse(result, config, taskId))
-
+  try {
+    for (let i = 0; i < profile.attempts; i++) {
+      if (profile.maxDurationMs && Date.now() - startedAt >= profile.maxDurationMs) {
+        await failTask(record.id, 'Timeout: Polling exceeded 10 minutes')
+        return
+      }
+      await new Promise(r => setTimeout(r, profile.intervalMs))
       if (!(await isActiveTask(record.id))) {
         logTaskProgress(label, 'poll-cancelled', { id: record.id, taskId, attempt: i + 1 })
         return
       }
+      try {
+        const { url, method, headers } = adapter.buildPollRequest(config, taskId)
+        logTaskProgress(label, 'poll-request', {
+          id: record.id,
+          taskId,
+          provider: config.provider,
+          method,
+          url: redactUrl(url),
+          attempt: i + 1,
+        })
+        const remainingMs = profile.maxDurationMs
+          ? Math.max(1_000, profile.maxDurationMs - (Date.now() - startedAt))
+          : 600_000
+        const resp = await fetch(url, {
+          method,
+          headers,
+          signal: AbortSignal.timeout(remainingMs),
+        })
+        if (!resp.ok) continue
+        const result = await resp.json() as any
 
-      if (
-        config.provider === 'comfyui'
-        && pollResp.status === 'failed'
-        && /history 为空且不在队列中/.test(String(pollResp.error || ''))
-      ) {
-        comfyGoneMisses++
-        if (comfyGoneMisses < 2) {
-          logTaskWarn(label, 'poll-comfy-gone-soft', {
-            id: record.id,
-            taskId,
-            attempt: i + 1,
-            misses: comfyGoneMisses,
-          })
-          continue
+        // 图片/视频 PollResponse 结构不同，这里统一按 any 取值后按 type 分支
+        // 第三参 taskId 供 ComfyUI 等从 history 条目拼 /view URL
+        const pollResp: any = await Promise.resolve(adapter.parsePollResponse(result, config, taskId))
+
+        if (!(await isActiveTask(record.id))) {
+          logTaskProgress(label, 'poll-cancelled', { id: record.id, taskId, attempt: i + 1 })
+          return
         }
-      } else {
-        comfyGoneMisses = 0
-      }
 
-      if (pollResp.status === 'completed') {
-        if (type === 'image') {
-          if (pollResp.imageUrl) {
-            logTaskSuccess(label, 'poll-complete', { id: record.id, taskId, imageUrl: pollResp.imageUrl })
-            await handleImageComplete(record, pollResp.imageUrl)
-            return
+        if (
+          config.provider === 'comfyui'
+          && pollResp.status === 'failed'
+          && /history 为空且不在队列中/.test(String(pollResp.error || ''))
+        ) {
+          comfyGoneMisses++
+          if (comfyGoneMisses < 2) {
+            logTaskWarn(label, 'poll-comfy-gone-soft', {
+              id: record.id,
+              taskId,
+              attempt: i + 1,
+              misses: comfyGoneMisses,
+            })
+            continue
           }
-          if (adapter.provider === 'gemini') {
-            // Gemini 可能返回 base64
-            const b64 = (adapter as ReturnType<typeof getImageAdapter>).extractImageBase64(result)
-            if (b64) {
-              logTaskSuccess(label, 'poll-base64-complete', { id: record.id, taskId, mimeType: b64.mimeType })
-              await handleImageCompleteBase64(record, b64.data, b64.mimeType)
+        } else {
+          comfyGoneMisses = 0
+        }
+
+        if (pollResp.status === 'completed') {
+          if (type === 'image') {
+            if (pollResp.imageUrl) {
+              logTaskSuccess(label, 'poll-complete', { id: record.id, taskId, imageUrl: pollResp.imageUrl })
+              await handleImageComplete(record, pollResp.imageUrl)
               return
             }
+            if (adapter.provider === 'gemini') {
+              // Gemini 可能返回 base64
+              const b64 = (adapter as ReturnType<typeof getImageAdapter>).extractImageBase64(result)
+              if (b64) {
+                logTaskSuccess(label, 'poll-base64-complete', { id: record.id, taskId, mimeType: b64.mimeType })
+                await handleImageCompleteBase64(record, b64.data, b64.mimeType)
+                return
+              }
+            }
+            await failTask(record.id, 'Poll completed without image URL')
+            return
           }
-          await failTask(record.id, 'Poll completed without image URL')
+          if (pollResp.videoUrl) {
+            logTaskSuccess(label, 'poll-complete', { id: record.id, taskId, videoUrl: pollResp.videoUrl })
+            await handleVideoComplete(record, pollResp.videoUrl, null)
+            return
+          }
+          await failTask(record.id, 'Poll completed without video URL')
           return
         }
-        if (pollResp.videoUrl) {
-          logTaskSuccess(label, 'poll-complete', { id: record.id, taskId, videoUrl: pollResp.videoUrl })
-          await handleVideoComplete(record, pollResp.videoUrl, null)
+        if (pollResp.status === 'failed') {
+          // 上游明确失败（如内容审核拦截）属终态：立即落库，不重试不等待超时
+          await failTask(record.id, pollResp.error || 'Generation failed')
           return
         }
-        await failTask(record.id, 'Poll completed without video URL')
-        return
+      } catch (err: any) {
+        if (!(await isActiveTask(record.id))) return
+        const exhausted = i === profile.attempts - 1
+          || (profile.maxDurationMs != null && Date.now() - startedAt >= profile.maxDurationMs)
+        if (exhausted) {
+          await failTask(record.id, `Timeout: ${err.message}`)
+          return
+        }
+        logTaskWarn(label, 'poll-retry', { id: record.id, taskId, attempt: i + 1, error: err.message })
       }
-      if (pollResp.status === 'failed') {
-        // 上游明确失败（如内容审核拦截）属终态：立即落库，不重试不等待超时
-        await failTask(record.id, pollResp.error || 'Generation failed')
-        return
-      }
-    } catch (err: any) {
-      if (!(await isActiveTask(record.id))) return
-      const exhausted = i === profile.attempts - 1
-        || (profile.maxDurationMs != null && Date.now() - startedAt >= profile.maxDurationMs)
-      if (exhausted) {
-        await failTask(record.id, `Timeout: ${err.message}`)
-        return
-      }
-      logTaskWarn(label, 'poll-retry', { id: record.id, taskId, attempt: i + 1, error: err.message })
     }
+    await failTask(record.id, 'Timeout: polling attempts exhausted')
+  } finally {
+    activePollIds.delete(record.id)
   }
-  await failTask(record.id, 'Timeout: polling attempts exhausted')
 }
 
 async function handleImageComplete(record: SysTaskRecord, imageUrl: string) {
