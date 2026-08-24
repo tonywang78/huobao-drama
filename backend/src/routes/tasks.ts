@@ -139,17 +139,23 @@ app.post('/:id/cancel', async (c) => {
   }
 })
 
-// GET /tasks — 按 type / storyboard_id / drama_id 过滤
+// GET /tasks — 按 type / storyboard_id / drama_id / character_id / scene_id / prop_id 过滤
 app.get('/', async (c) => {
   const type = c.req.query('type')
   const storyboardId = c.req.query('storyboard_id')
   const dramaId = c.req.query('drama_id')
+  const characterId = c.req.query('character_id')
+  const sceneId = c.req.query('scene_id')
+  const propId = c.req.query('prop_id')
 
   let rows = await db.select().from(schema.sysTask)
 
   if (type) rows = rows.filter(r => r.type === type)
   if (storyboardId) rows = rows.filter(r => r.storyboardId === Number(storyboardId))
   if (dramaId) rows = rows.filter(r => r.dramaId === Number(dramaId))
+  if (characterId) rows = rows.filter(r => r.characterId === Number(characterId))
+  if (sceneId) rows = rows.filter(r => r.sceneId === Number(sceneId))
+  if (propId) rows = rows.filter(r => r.propId === Number(propId))
 
   return success(c, rows)
 })

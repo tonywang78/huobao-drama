@@ -35,6 +35,7 @@ export const episodes = mysqlTable('episodes', {
   thumbnail: text('thumbnail'),
   imageConfigId: int('image_config_id'),
   videoConfigId: int('video_config_id'),
+  img2imgConfigId: int('img2img_config_id'),
   resolution: varchar('resolution', { length: 16 }).default('720p'),
   createdAt: varchar('created_at', { length: 64 }).notNull(),
   updatedAt: varchar('updated_at', { length: 64 }).notNull(),

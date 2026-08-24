@@ -8,6 +8,7 @@ import { getDramaStylePrompt } from '../services/style-preset.js'
 import { ensurePropFinalPrompt } from '../services/final-prompt.js'
 import { hardDeleteProp } from '../utils/asset-hard-delete.js'
 import { logTaskError, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
+import { recordAssetImageHistory, shouldRecordImageHistory } from '../utils/asset-image-history.js'
 
 const app = new Hono()
 // 道具图：白底单品静物，方形画布
@@ -52,6 +53,9 @@ app.delete('/:id', async (c) => {
 app.put('/:id', async (c) => {
   const id = Number(c.req.param('id'))
   const body = await c.req.json()
+  const [existing] = await db.select().from(schema.props).where(eq(schema.props.id, id))
+  if (!existing) return notFound(c, '道具不存在')
+
   const updates: Record<string, any> = { updatedAt: now() }
   if (body.name !== undefined) updates.name = body.name
   if (body.type !== undefined) updates.type = body.type
@@ -64,6 +68,17 @@ app.put('/:id', async (c) => {
   // 手动编辑最终提示词时以传入值为准；未传入则保留原值（修改信息时不再自动置空）
   if (body.final_prompt !== undefined) updates.finalPrompt = body.final_prompt || null
   else if (body.finalPrompt !== undefined) updates.finalPrompt = body.finalPrompt || null
+
+  const newImageUrl = updates.imageUrl as string | undefined
+  if (shouldRecordImageHistory(body, existing.imageUrl, newImageUrl)) {
+    await recordAssetImageHistory({
+      dramaId: existing.dramaId,
+      localPath: newImageUrl!,
+      propId: id,
+      source: 'upload',
+    })
+  }
+
   await db.update(schema.props).set(updates).where(eq(schema.props.id, id))
   return success(c)
 })

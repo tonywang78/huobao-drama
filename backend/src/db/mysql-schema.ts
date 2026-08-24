@@ -33,6 +33,7 @@ export const mysqlSchemaStatements = [
     thumbnail TEXT,
     image_config_id INT,
     video_config_id INT,
+    img2img_config_id INT,
     resolution VARCHAR(16) DEFAULT '720p',
     created_at VARCHAR(64) NOT NULL,
     updated_at VARCHAR(64) NOT NULL,
@@ -308,10 +309,28 @@ export const mysqlDataSeedStatements = stylePresetSeeds.map((s) => ({
   params: [s.name, s.value, s.prompt, s.description, s.sortOrder, new Date().toISOString(), new Date().toISOString(), s.value],
 }))
 
+/** 已有库增量补丁：CREATE TABLE IF NOT EXISTS 不会给旧表加列 */
+export const mysqlSchemaPatches = [
+  'ALTER TABLE `episodes` ADD COLUMN `img2img_config_id` INT NULL AFTER `video_config_id`',
+]
+
+async function applySchemaPatches(pool: Pool) {
+  for (const sql of mysqlSchemaPatches) {
+    try {
+      await pool.query(sql)
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code
+      if (code === 'ER_DUP_FIELDNAME') continue
+      throw err
+    }
+  }
+}
+
 export async function initMySqlSchema(pool: Pool) {
   for (const statement of mysqlSchemaStatements) {
     await pool.query(statement)
   }
+  await applySchemaPatches(pool)
   for (const seed of mysqlDataSeedStatements) {
     await pool.query(seed.sql, seed.params)
   }

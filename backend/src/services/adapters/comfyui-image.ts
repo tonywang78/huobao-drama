@@ -28,9 +28,10 @@ export class ComfyUIImageAdapter implements ImageProviderAdapter {
   async buildGenerateRequest(config: AIConfig, record: ImageGenerationRecord): Promise<ProviderRequest> {
     const { width, height } = parseSize(record.size)
     const refs = parseUrlList(record.referenceImages)
+    const kind = config.serviceType === 'img2img' ? 'img2img' : 'image'
     return buildComfyPromptRequest(
       config,
-      'image',
+      kind,
       {
         prompt: record.prompt,
         negativePrompt: '',

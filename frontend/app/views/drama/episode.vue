@@ -1336,22 +1336,22 @@
               <aside class="asset-detail-preview-panel">
                 <div class="asset-detail-section-title">
                   <span>视觉预览</span>
-                  <span :class="['asset-detail-state', assetImageSrc(assetDetail.item) ? 'is-ready' : '']">
-                    {{ assetImageSrc(assetDetail.item) ? '已生成' : '待生成' }}
+                  <span :class="['asset-detail-state', assetDetailDisplayUrl ? 'is-ready' : '']">
+                    {{ assetDetailDisplayUrl ? (assetPreviewImageUrl ? '预览中' : '已生成') : '待生成' }}
                   </span>
                 </div>
 
                 <button
                   type="button"
                   class="asset-detail-media-frame"
-                  :disabled="!assetImageSrc(assetDetail.item)"
-                  @click.stop="openImageViewer(assetImageSrc(assetDetail.item), `${assetDetailTitle(assetDetail)} ${assetDetail.type === 'character' ? '角色形象' : assetDetail.type === 'scene' ? '场景图' : '道具图'}`)"
+                  :disabled="!assetDetailDisplayUrl"
+                  @click.stop="openImageViewer(assetDetailDisplayUrl, `${assetDetailTitle(assetDetail)} ${assetDetail.type === 'character' ? '角色形象' : assetDetail.type === 'scene' ? '场景图' : '道具图'}`)"
                 >
                   <img
-                    v-if="assetImageSrc(assetDetail.item)"
-                    :src="thumbOf(assetImageSrc(assetDetail.item))"
+                    v-if="assetDetailDisplayUrl"
+                    :src="thumbOf(assetDetailDisplayUrl)"
                     class="previewable-image"
-                    @error="thumbFallback($event, assetImageSrc(assetDetail.item))"
+                    @error="thumbFallback($event, assetDetailDisplayUrl)"
                   />
                   <span v-else class="asset-detail-media-empty">
                     <svg v-if="assetDetail.type === 'character'" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -1370,6 +1370,15 @@
                     <strong>{{ assetDetail.type === 'character' ? (assetDetail.item.role || '角色') : assetDetail.type === 'prop' ? (assetDetail.item.type || '道具') : (assetDetail.item.time || '未设时间') }}</strong>
                   </div>
                 </div>
+
+                <AssetImageHistoryList
+                  :history="assetImageHistory"
+                  :preview-image-url="assetPreviewImageUrl"
+                  :is-current-image="isCurrentAssetImage"
+                  @preview="previewAssetHistoryImage"
+                  @remove="removeAssetHistoryImage"
+                  @set-main="setAssetAsMainImage"
+                />
               </aside>
 
               <section class="asset-detail-editor-panel">
@@ -1475,6 +1484,33 @@
                     ? '提示词可直接编辑，保存后生效；修改场景描述或光影并保存后，最终提示词将被清空，下次生成场景图时由提示词 Agent 重新生成。'
                     : '提示词可直接编辑，保存后生效；修改物品外貌并保存后，最终提示词将被清空，下次生成道具图时由提示词 Agent 重新生成。' }}
               </p>
+            </section>
+
+            <section v-if="assetDetail.type === 'scene'" class="asset-detail-prompt-panel asset-detail-edit-panel">
+              <div class="asset-detail-section-title">
+                <span>改图 · 图生图</span>
+                <span v-if="lockedImg2imgConfigLabel" class="tag tag-accent">{{ lockedImg2imgConfigLabel }}</span>
+              </div>
+              <textarea
+                v-model="sceneEditPrompt"
+                class="textarea asset-detail-prompt-textarea"
+                rows="3"
+                placeholder="基于当前场景图修改，如：把天空改成傍晚，增加暖色灯光…"
+                :disabled="!assetImageSrc(assetDetail.item) || isPendingSceneImage(assetDetail.item.id)"
+              />
+              <p class="asset-detail-prompt-hint">
+                {{ assetImageSrc(assetDetail.item)
+                  ? '改图会保留当前构图，仅按提示词调整细节；完整重生成请用「重绘场景」。'
+                  : '请先生成或上传场景图后再改图。' }}
+              </p>
+              <button
+                class="btn btn-sm"
+                :disabled="!assetImageSrc(assetDetail.item) || !sceneEditPrompt.trim() || isPendingSceneImage(assetDetail.item.id)"
+                @click="editSceneImg(assetDetail.item.id, sceneEditPrompt)"
+              >
+                <Loader2 v-if="isPendingSceneImage(assetDetail.item.id)" :size="11" class="animate-spin" />
+                {{ isPendingSceneImage(assetDetail.item.id) ? '改图中' : '改图' }}
+              </button>
             </section>
           </div>
 
@@ -1704,6 +1740,8 @@ import {
 } from 'lucide-vue-next'
 import { api, dramaAPI, episodeAPI, storyboardAPI, characterAPI, sceneAPI, propAPI, taskAPI, mergeAPI, aiConfigAPI, uploadAPI } from '~/composables/useApi'
 import { useAgent } from '~/composables/useAgent'
+import { useAssetImageHistory } from '~/composables/useAssetImageHistory'
+import AssetImageHistoryList from '~/components/AssetImageHistoryList.vue'
 
 definePageMeta({ layout: 'studio' })
 
@@ -1781,6 +1819,7 @@ const prodTabIdx = computed({
   set: (v) => { prodTab.value = prodTabDefs.value[v]?.id || 'assets' },
 })
 const imageConfigs = ref([])
+const img2imgConfigs = ref([])
 const videoConfigs = ref([])
 const textConfigs = ref([])
 // 生成时可选模型：空串 = 跟随配置默认（models[0]）；选择持久化到 localStorage，刷新页面后保留
@@ -1835,9 +1874,22 @@ const imageViewer = ref({ open: false, src: '', title: '' })
 const activeMerge = ref(null) // 成片大预览弹窗中正在播放的拼接记录
 const assetDetail = ref({ open: false, type: '', item: null })
 const assetDetailDraft = ref({ appearance: '', styling: '', prompt: '', lighting: '', description: '' })
+const assetHistoryType = computed(() => (assetDetail.value.open ? assetDetail.value.type : ''))
+const assetHistoryItem = computed(() => assetDetail.value.item)
+const {
+  history: assetImageHistory,
+  previewImageUrl: assetPreviewImageUrl,
+  displayImageUrl: assetDetailDisplayUrl,
+  loadHistory: loadAssetImageHistory,
+  isCurrentImage: isCurrentAssetImage,
+  previewHistoryImage: previewAssetHistoryImage,
+  setAsMainImage: setAssetAsMainImage,
+  removeHistoryImage: removeAssetHistoryImage,
+} = useAssetImageHistory(assetHistoryType, assetHistoryItem)
 // 最终提示词手动编辑：dirty 时才随保存提交，避免无修改保存误清空 Agent 生成的提示词
 const assetPromptDraft = ref('')
 const assetPromptDirty = ref(false)
+const sceneEditPrompt = ref('')
 const savingAssetDetail = ref(false)
 
 function configLabel(config) {
@@ -1871,6 +1923,7 @@ function openAssetDetail(type, item) {
   }
   assetPromptDraft.value = item.final_prompt || item.finalPrompt || ''
   assetPromptDirty.value = false
+  sceneEditPrompt.value = ''
 }
 
 function closeAssetDetail() {
@@ -1878,6 +1931,7 @@ function closeAssetDetail() {
   assetDetailDraft.value = { appearance: '', styling: '', prompt: '', lighting: '', description: '' }
   assetPromptDraft.value = ''
   assetPromptDirty.value = false
+  sceneEditPrompt.value = ''
 }
 
 // ─── 手动新增资产 ────────────────────────────────────────────
@@ -2310,8 +2364,10 @@ function isNarratorCharacter(char) {
 const visualChars = computed(() => chars.value.filter(c => !isNarratorCharacter(c)))
 const lockedImageConfigId = computed(() => episode.value?.image_config_id || episode.value?.imageConfigId || null)
 const lockedVideoConfigId = computed(() => episode.value?.video_config_id || episode.value?.videoConfigId || null)
+const lockedImg2imgConfigId = computed(() => episode.value?.img2img_config_id || episode.value?.img2imgConfigId || null)
 const lockedImageConfigLabel = computed(() => configLabel(imageConfigs.value.find(c => c.id === lockedImageConfigId.value)))
 const lockedVideoConfigLabel = computed(() => configLabel(videoConfigs.value.find(c => c.id === lockedVideoConfigId.value)))
+const lockedImg2imgConfigLabel = computed(() => configLabel(img2imgConfigs.value.find(c => c.id === lockedImg2imgConfigId.value)))
 // 画面比例在创建项目时固定，视频生成统一使用
 const dramaAspectRatio = computed(() => drama.value?.aspect_ratio || drama.value?.aspectRatio || '16:9')
 
@@ -2893,6 +2949,16 @@ async function refresh() {
   }
   try { mergeData.value = await mergeAPI.status(epId.value) } catch {}
   await Promise.all([loadGenTasks(), loadExportMerges()])
+  syncOpenAssetDetailItem()
+}
+
+function syncOpenAssetDetailItem() {
+  const detail = assetDetail.value
+  if (!detail.open || !detail.item?.id) return
+  const list = detail.type === 'character' ? chars.value : detail.type === 'scene' ? scenes.value : propItems.value
+  const fresh = list.find(x => x.id === detail.item.id)
+  if (fresh) assetDetail.value.item = fresh
+  loadAssetImageHistory()
 }
 
 function saveRaw() { episodeAPI.update(epId.value, { content: localRaw.value }); episode.value.content = localRaw.value }
@@ -3125,6 +3191,30 @@ async function genSceneImg(id) {
     watchAsyncResult(() => {
       const scene = scenes.value.find(s => s.id === id)
       const done = !!(scene?.image_url || scene?.imageUrl)
+      if (done) pendingSceneImageIds.value = pendingSceneImageIds.value.filter(item => item !== id)
+      return done
+    })
+  } catch (e) {
+    pendingSceneImageIds.value = pendingSceneImageIds.value.filter(item => item !== id)
+    toast.error(e.message)
+  }
+}
+async function editSceneImg(id, editPrompt) {
+  const prompt = String(editPrompt || '').trim()
+  if (!prompt) { toast.warning('请输入改图提示词'); return }
+  const scene = scenes.value.find(s => s.id === id)
+  if (!scene?.image_url && !scene?.imageUrl && !scene?.local_path && !scene?.localPath) {
+    toast.warning('请先生成或上传场景图')
+    return
+  }
+  try {
+    if (!isPendingSceneImage(id)) pendingSceneImageIds.value.push(id)
+    await sceneAPI.editImage(id, epId.value, prompt, lockedImg2imgConfigId.value || undefined)
+    toast.success('场景改图中')
+    await refresh()
+    watchAsyncResult(() => {
+      const s = scenes.value.find(x => x.id === id)
+      const done = !!(s?.image_url || s?.imageUrl)
       if (done) pendingSceneImageIds.value = pendingSceneImageIds.value.filter(item => item !== id)
       return done
     })
@@ -3733,12 +3823,14 @@ async function doMerge(ids) {
 }
 async function loadConfigs() {
   try {
-    const [imgCfgs, vidCfgs, txtCfgs] = await Promise.all([
+    const [imgCfgs, img2imgCfgs, vidCfgs, txtCfgs] = await Promise.all([
       aiConfigAPI.list('image'),
+      aiConfigAPI.list('img2img'),
       aiConfigAPI.list('video'),
       aiConfigAPI.list('text'),
     ])
     imageConfigs.value = imgCfgs || []
+    img2imgConfigs.value = img2imgCfgs || []
     videoConfigs.value = vidCfgs || []
     textConfigs.value = txtCfgs || []
   } catch (e) { console.error('Failed to load AI configs', e) }

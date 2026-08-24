@@ -352,18 +352,18 @@
               <aside class="mat-detail-preview-panel">
                 <div class="mat-detail-section-title">
                   <span>视觉预览</span>
-                  <span :class="['mat-detail-state', matHasImage(editTarget) ? 'is-ready' : '']">
-                    {{ matHasImage(editTarget) ? '已生成' : '待生成' }}
+                  <span :class="['mat-detail-state', matDetailDisplayUrl ? 'is-ready' : '']">
+                    {{ matDetailDisplayUrl ? (matPreviewImageUrl ? '预览中' : '已生成') : '待生成' }}
                   </span>
                 </div>
 
                 <button
                   type="button"
                   class="mat-detail-media-frame"
-                  :disabled="!matHasImage(editTarget)"
-                  @click.stop="openAssetViewer(editTarget)"
+                  :disabled="!matDetailDisplayUrl"
+                  @click.stop="openMatDetailViewer"
                 >
-                  <img v-if="matHasImage(editTarget)" :src="thumbOf(assetSrc(editTarget))" @error="thumbFallback($event, assetSrc(editTarget))" />
+                  <img v-if="matDetailDisplayUrl" :src="thumbOf(matDetailDisplayUrl)" @error="thumbFallback($event, matDetailDisplayUrl)" />
                   <span v-else class="mat-detail-media-empty">
                     <svg v-if="editTarget.kindKey === 'character'" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                     <svg v-else-if="editTarget.kindKey === 'prop'" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
@@ -381,6 +381,15 @@
                     <strong>{{ editTarget.kindKey === 'character' ? (editTarget.role || '角色') : editTarget.kindKey === 'prop' ? (editTarget.type || '道具') : (editTarget.time || '未设时间') }}</strong>
                   </div>
                 </div>
+
+                <AssetImageHistoryList
+                  :history="matImageHistory"
+                  :preview-image-url="matPreviewImageUrl"
+                  :is-current-image="isCurrentMatImage"
+                  @preview="previewMatHistoryImage"
+                  @remove="removeMatHistoryImage"
+                  @set-main="onMatSetAsMainImage"
+                />
               </aside>
 
               <!-- 右侧：编辑信息 -->
@@ -473,6 +482,29 @@
                 rows="5"
                 placeholder="点击「生成提示词」由 AI 根据信息生成，或在此手动填写。手动修改并保存后，下次生成图片将使用此提示词。"
               ></textarea>
+            </section>
+
+            <!-- 场景改图：基于当前图 + 修改提示词 -->
+            <section v-if="editTarget.kindKey === 'scene'" class="mat-detail-prompt-panel">
+              <div class="mat-detail-section-title">
+                <span>改图 · 图生图</span>
+                <span class="dim">基于当前场景图按提示词微调，完整重生成请用「重新生成」</span>
+              </div>
+              <textarea
+                v-model="editDraft.sceneEditPrompt"
+                class="textarea mat-detail-prompt-text"
+                rows="3"
+                placeholder="如：把天空改成傍晚，增加暖色灯光…"
+                :disabled="!matHasImage(editTarget) || isPending(editTarget)"
+              ></textarea>
+              <button
+                class="btn btn-sm mat-detail-prompt-gen"
+                style="margin-top:8px"
+                :disabled="!matHasImage(editTarget) || !String(editDraft.sceneEditPrompt || '').trim() || isPending(editTarget) || !firstEpisodeId"
+                @click="editSceneMaterial(editTarget)"
+              >
+                {{ isPending(editTarget) ? '改图中…' : '改图' }}
+              </button>
             </section>
           </div>
 
@@ -578,6 +610,8 @@
 <script setup>
 import { toast } from 'vue-sonner'
 import { dramaAPI, episodeAPI, characterAPI, sceneAPI, propAPI, uploadAPI } from '~/composables/useApi'
+import { useAssetImageHistory } from '~/composables/useAssetImageHistory'
+import AssetImageHistoryList from '~/components/AssetImageHistoryList.vue'
 import BaseSelect from '~/components/BaseSelect.vue'
 
 const route = useRoute()
@@ -660,6 +694,27 @@ async function load() {
   } catch (e) {
     toast.error(e.message)
   }
+  syncOpenMatDetailItem()
+}
+
+function syncOpenMatDetailItem() {
+  if (!editDialog.value || !editTarget.value?.id) return
+  const m = editTarget.value
+  const list = m.kindKey === 'character'
+    ? (drama.value?.characters || [])
+    : m.kindKey === 'scene'
+      ? (drama.value?.scenes || [])
+      : (drama.value?.props || [])
+  const fresh = list.find(x => x.id === m.id)
+  if (fresh) {
+    editTarget.value = { ...fresh, kind: m.kind, kindKey: m.kindKey }
+  }
+  loadMatImageHistory()
+}
+
+async function onMatSetAsMainImage() {
+  const ok = await setMatAsMainImage()
+  if (ok) await load()
 }
 
 function openAddEpisode() {
@@ -862,6 +917,7 @@ function uploadMaterial(m) {
       // 详情弹窗打开时同步刷新预览
       if (editTarget.value && editTarget.value.kindKey === m.kindKey && editTarget.value.id === m.id) {
         editTarget.value = { ...editTarget.value, image_url: res.path, local_path: res.path }
+        loadMatImageHistory()
       }
     } catch (e) {
       toast.error(e.message)
@@ -874,6 +930,14 @@ function uploadMaterial(m) {
 
 function openAssetViewer(m) {
   assetViewer.value = { open: true, src: assetSrc(m), title: `${m.kind} · ${m.name}` }
+}
+function openMatDetailViewer() {
+  if (!editTarget.value || !matDetailDisplayUrl.value) return
+  assetViewer.value = {
+    open: true,
+    src: matDetailDisplayUrl.value,
+    title: `${editTarget.value.kind} · ${editTarget.value.name || editTarget.value.location}`,
+  }
 }
 function closeAssetViewer() {
   assetViewer.value = { open: false, src: '', title: '' }
@@ -891,6 +955,18 @@ const editDialog = ref(false)
 const editSaving = ref(false)
 const editTarget = ref(null)
 const editDraft = reactive({})
+const matHistoryType = computed(() => (editDialog.value && editTarget.value ? editTarget.value.kindKey : ''))
+const matHistoryItem = computed(() => editTarget.value)
+const {
+  history: matImageHistory,
+  previewImageUrl: matPreviewImageUrl,
+  displayImageUrl: matDetailDisplayUrl,
+  loadHistory: loadMatImageHistory,
+  isCurrentImage: isCurrentMatImage,
+  previewHistoryImage: previewMatHistoryImage,
+  setAsMainImage: setMatAsMainImage,
+  removeHistoryImage: removeMatHistoryImage,
+} = useAssetImageHistory(matHistoryType, matHistoryItem)
 
 function openEdit(m) {
   editTarget.value = m
@@ -899,7 +975,7 @@ function openEdit(m) {
   if (m.kindKey === 'character') {
     Object.assign(editDraft, { name: m.name || '', role: m.role || '', appearance: m.appearance || '', description: m.description || '', styling: m.styling || '' })
   } else if (m.kindKey === 'scene') {
-    Object.assign(editDraft, { location: m.location || '', time: m.time || '', prompt: m.prompt || '', lighting: m.lighting || '' })
+    Object.assign(editDraft, { location: m.location || '', time: m.time || '', prompt: m.prompt || '', lighting: m.lighting || '', sceneEditPrompt: '' })
   } else {
     Object.assign(editDraft, { name: m.name || '', type: m.type || '', description: m.description || '' })
   }
@@ -910,6 +986,29 @@ function openEdit(m) {
 // 生成/重新生成最终提示词（不生图）：调用各类型 generate-prompt 接口，结果写回 draft
 const finalPromptGen = ref(false)
 const firstEpisodeId = computed(() => drama.value?.episodes?.[0]?.id || null)
+const lockedImg2imgConfigId = computed(() => {
+  const ep = drama.value?.episodes?.[0]
+  return ep?.img2img_config_id || ep?.img2imgConfigId || null
+})
+
+async function editSceneMaterial(m) {
+  const epId = firstEpisodeId.value
+  if (!epId) { toast.error('请先在「剧集列表」创建至少一集，才能改图'); return }
+  const prompt = String(editDraft.sceneEditPrompt || '').trim()
+  if (!prompt) { toast.warning('请输入改图提示词'); return }
+  if (!matHasImage(m)) { toast.warning('请先生成或上传场景图'); return }
+  const key = pendingKey(m)
+  if (pendingMaterials.value.has(key)) return
+  pendingMaterials.value = new Set(pendingMaterials.value).add(key)
+  try {
+    await sceneAPI.editImage(m.id, epId, prompt, lockedImg2imgConfigId.value || undefined)
+    toast.success(`场景「${m.name}」改图中`)
+    pollMaterial(m)
+  } catch (e) {
+    pendingMaterials.value = new Set([...pendingMaterials.value].filter(k => k !== key))
+    toast.error(e.message)
+  }
+}
 async function generateFinalPrompt(m) {
   const epId = firstEpisodeId.value
   if (!epId) { toast.error('请先在「剧集列表」创建至少一集，才能生成最终提示词'); return }

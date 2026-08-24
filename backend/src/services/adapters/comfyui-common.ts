@@ -14,7 +14,7 @@ import { joinProviderUrl } from './url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const WORKFLOW_DIR = join(__dirname, 'comfyui', 'workflows')
 
-export type ComfyWorkflowKind = 'image' | 'video'
+export type ComfyWorkflowKind = 'image' | 'video' | 'img2img'
 
 export interface ComfyPlaceholderValues {
   prompt?: string | null
@@ -139,7 +139,11 @@ export function loadBuiltinWorkflowApi(kind: ComfyWorkflowKind): Record<string, 
   if (cachedDefaults[kind]) {
     return structuredClone(cachedDefaults[kind]!)
   }
-  const file = kind === 'image' ? 'image-default.api.json' : 'video-default.api.json'
+  const file = kind === 'video'
+    ? 'video-default.api.json'
+    : kind === 'img2img'
+      ? 'img2img-default.api.json'
+      : 'image-default.api.json'
   const parsed = JSON.parse(readFileSync(join(WORKFLOW_DIR, file), 'utf8')) as Record<string, unknown>
   cachedDefaults[kind] = parsed
   return structuredClone(parsed)

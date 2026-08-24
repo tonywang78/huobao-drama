@@ -6,13 +6,15 @@ import { eq } from 'drizzle-orm'
 import { logTaskProgress, logTaskWarn } from '../utils/task-logger.js'
 import { joinProviderUrl } from './adapters/url.js'
 
-export type ServiceType = 'text' | 'image' | 'video'
+export type ServiceType = 'text' | 'image' | 'video' | 'img2img'
 
 export interface AIConfig {
   provider: string
   baseUrl: string
   apiKey: string
   model: string
+  /** 对应 ai_service_configs.service_type */
+  serviceType?: ServiceType
   /** 厂商扩展配置（如 ComfyUI settings.workflowApi） */
   settings?: string | Record<string, unknown> | null
 }
@@ -21,6 +23,7 @@ export const officialProviders: Record<ServiceType, readonly string[]> = {
   text: ['openai', 'gemini', 'volcengine'],
   image: ['openai', 'gemini', 'volcengine', 'comfyui'],
   video: ['volcengine', 'minimax', 'comfyui'],
+  img2img: ['gemini', 'comfyui'],
 }
 
 export function isOfficialProvider(serviceType?: string | null, provider?: string | null): boolean {
@@ -80,6 +83,7 @@ export async function getActiveConfig(serviceType: ServiceType): Promise<AIConfi
     baseUrl: active.baseUrl,
     apiKey: active.apiKey,
     model: models[0] || '',
+    serviceType: active.serviceType as ServiceType,
     settings: active.settings || null,
   }
 }
@@ -133,6 +137,7 @@ export async function getConfigById(id: number): Promise<AIConfig | null> {
     baseUrl: row.baseUrl,
     apiKey: row.apiKey,
     model: models[0] || '',
+    serviceType: row.serviceType as ServiceType,
     settings: row.settings || null,
   }
 }

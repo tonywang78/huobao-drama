@@ -81,6 +81,8 @@ export interface AIConfig {
   baseUrl: string
   apiKey: string
   model: string
+  /** 对应 ai_service_configs.service_type（ComfyUI 等工作流选择用） */
+  serviceType?: string
   /** 厂商扩展配置（如 ComfyUI workflowApi），JSON 对象或序列化字符串 */
   settings?: string | Record<string, unknown> | null
 }

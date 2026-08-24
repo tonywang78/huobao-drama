@@ -4,7 +4,7 @@
  */
 import { db, getInsertId, schema } from '../db/index.js'
 import { eq, inArray, and } from 'drizzle-orm'
-import { getActiveConfig, getConfigById, type ServiceType } from './ai.js'
+import { getActiveConfig, getConfigById, isOfficialProvider, type ServiceType } from './ai.js'
 import { now } from '../utils/response.js'
 import { downloadFile, generateImageThumb, readImageAsCompressedDataUrl, saveBase64Image } from '../utils/storage.js'
 import { extractVideoPoster } from '../utils/video-poster.js'
@@ -55,6 +55,20 @@ interface GenerateVideoParams {
   configId?: number
 }
 
+interface GenerateImageEditParams {
+  storyboardId?: number
+  dramaId?: number
+  sceneId?: number
+  characterId?: number
+  propId?: number
+  prompt: string
+  model?: string
+  size?: string
+  referenceImages: string[]
+  frameType?: string
+  configId?: number
+}
+
 export async function generateImage(params: GenerateImageParams): Promise<number> {
   // 指定配置（集锁定）可能已停用/删除/厂商收敛，失效时回退到当前启用配置，避免生成被旧引用卡死
   const config = params.configId
@@ -86,6 +100,49 @@ export async function generateImage(params: GenerateImageParams): Promise<number
     model: params.model || config.model,
   })
   logTaskPayload('ImageTask', 'enqueue params', {
+    id,
+    config: { provider: config.provider, model: config.model, baseUrl: config.baseUrl },
+    params,
+  })
+  return id
+}
+
+export async function generateImageEdit(params: GenerateImageEditParams): Promise<number> {
+  if (!params.referenceImages?.length) {
+    throw new Error('图生图需要参考图')
+  }
+
+  const config = params.configId
+    ? (await getConfigById(params.configId)) ?? await getActiveConfig('img2img')
+    : await getActiveConfig('img2img')
+  if (!config) throw new Error('未配置图生图模型，请先到「设置」页添加并启用 AI 服务')
+  if (!isOfficialProvider('img2img', config.provider)) {
+    throw new Error(`图生图不支持 ${config.provider} 厂商`)
+  }
+
+  const id = await createTask('image', config, {
+    storyboardId: params.storyboardId,
+    dramaId: params.dramaId,
+    sceneId: params.sceneId,
+    characterId: params.characterId,
+    propId: params.propId,
+    prompt: params.prompt,
+    model: params.model || config.model,
+  }, {
+    size: params.size || '1920x1080',
+    frameType: params.frameType,
+    referenceImages: params.referenceImages,
+    serviceType: 'img2img',
+  })
+
+  logTaskStart('ImageTask', 'enqueue-img2img', {
+    id,
+    provider: config.provider,
+    sceneId: params.sceneId,
+    characterId: params.characterId,
+    model: params.model || config.model,
+  })
+  logTaskPayload('ImageTask', 'enqueue img2img params', {
     id,
     config: { provider: config.provider, model: config.model, baseUrl: config.baseUrl },
     params,
@@ -152,12 +209,42 @@ async function isActiveTask(id: number): Promise<boolean> {
 }
 
 async function resolveConfigForCancel(record: SysTaskRecord): Promise<AIConfig | null> {
-  const serviceType = record.type as ServiceType
+  const params = parseTaskParams(record.params)
+  const configServiceType: ServiceType = params.serviceType === 'img2img'
+    ? 'img2img'
+    : (record.type as ServiceType) === 'video'
+      ? 'video'
+      : 'image'
+
+  const lockedConfigForEpisode = (ep: typeof schema.episodes.$inferSelect | undefined) => {
+    if (!ep) return null
+    const lockedId = configServiceType === 'video'
+      ? ep.videoConfigId
+      : configServiceType === 'img2img'
+        ? ep.img2imgConfigId
+        : ep.imageConfigId
+    return lockedId
+  }
+
   if (record.storyboardId) {
     const [sb] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, record.storyboardId))
     if (sb) {
       const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, sb.episodeId))
-      const lockedId = serviceType === 'video' ? ep?.videoConfigId : ep?.imageConfigId
+      const lockedId = lockedConfigForEpisode(ep)
+      if (lockedId != null) {
+        const locked = await getConfigById(lockedId)
+        if (locked) return locked
+      }
+    }
+  }
+
+  if (record.sceneId && configServiceType === 'img2img') {
+    const links = await db.select().from(schema.episodeScenes)
+      .where(eq(schema.episodeScenes.sceneId, record.sceneId))
+      .limit(1)
+    if (links[0]) {
+      const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, links[0].episodeId))
+      const lockedId = lockedConfigForEpisode(ep)
       if (lockedId != null) {
         const locked = await getConfigById(lockedId)
         if (locked) return locked
@@ -166,7 +253,7 @@ async function resolveConfigForCancel(record: SysTaskRecord): Promise<AIConfig |
   }
 
   const rows = (await db.select().from(schema.aiServiceConfigs)
-    .where(eq(schema.aiServiceConfigs.serviceType, serviceType)))
+    .where(eq(schema.aiServiceConfigs.serviceType, configServiceType)))
     .filter(r => (r.provider || '').toLowerCase() === (record.provider || '').toLowerCase())
     .sort((a, b) => (b.priority || 0) - (a.priority || 0))
   const match = rows.find(r => r.isActive) || rows[0]
@@ -177,10 +264,11 @@ async function resolveConfigForCancel(record: SysTaskRecord): Promise<AIConfig |
       baseUrl: match.baseUrl,
       apiKey: match.apiKey,
       model: models[0] || '',
+      serviceType: match.serviceType as ServiceType,
       settings: match.settings || null,
     }
   }
-  return getActiveConfig(serviceType)
+  return getActiveConfig(configServiceType)
 }
 
 /**

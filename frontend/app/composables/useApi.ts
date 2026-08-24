@@ -93,6 +93,7 @@ export const sceneAPI = {
   del: (id: number) => api.del(`/scenes/${id}`),
   generatePrompt: (id: number, episodeId: number, force = false, textModel?: string, textConfigId?: number) => api.post(`/scenes/${id}/generate-prompt`, { episode_id: episodeId, force, text_model: textModel || undefined, text_config_id: textConfigId || undefined }),
   generateImage: (id: number, episodeId: number, model?: string, configId?: number, textModel?: string, textConfigId?: number) => api.post(`/scenes/${id}/generate-image`, { episode_id: episodeId, model: model || undefined, config_id: configId || undefined, text_model: textModel || undefined, text_config_id: textConfigId || undefined }),
+  editImage: (id: number, episodeId: number, editPrompt: string, configId?: number, model?: string) => api.post(`/scenes/${id}/edit-image`, { episode_id: episodeId, edit_prompt: editPrompt, config_id: configId || undefined, model: model || undefined }),
 }
 
 export const propAPI = {
@@ -110,11 +111,21 @@ export const taskAPI = {
   cancel: (id: number) => api.post(`/tasks/${id}/cancel`),
   cancelAll: (d: { episode_id: number; type?: 'image' | 'video' }) => api.post('/tasks/cancel-all', d),
   del: (id: number) => api.del(`/tasks/${id}`),
-  list: (params?: { type?: 'image' | 'video'; drama_id?: number; storyboard_id?: number }) => {
+  list: (params?: {
+    type?: 'image' | 'video'
+    drama_id?: number
+    storyboard_id?: number
+    character_id?: number
+    scene_id?: number
+    prop_id?: number
+  }) => {
     const query = new URLSearchParams()
     if (params?.type) query.set('type', params.type)
     if (params?.drama_id) query.set('drama_id', String(params.drama_id))
     if (params?.storyboard_id) query.set('storyboard_id', String(params.storyboard_id))
+    if (params?.character_id) query.set('character_id', String(params.character_id))
+    if (params?.scene_id) query.set('scene_id', String(params.scene_id))
+    if (params?.prop_id) query.set('prop_id', String(params.prop_id))
     return api.get(`/tasks${query.size ? `?${query.toString()}` : ''}`)
   },
   // 按集聚合生成任务（sys_task + video_merges）

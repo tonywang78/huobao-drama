@@ -8,6 +8,7 @@ import { getDramaStylePrompt } from '../services/style-preset.js'
 import { ensureCharacterFinalPrompt } from '../services/final-prompt.js'
 import { hardDeleteCharacter } from '../utils/asset-hard-delete.js'
 import { logTaskError, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
+import { recordAssetImageHistory, shouldRecordImageHistory } from '../utils/asset-image-history.js'
 
 const app = new Hono()
 const CHARACTER_IMAGE_SIZE = '1920x1080'
@@ -58,6 +59,9 @@ function characterImagePrompt(char: typeof schema.characters.$inferSelect, style
 app.put('/:id', async (c) => {
   const id = Number(c.req.param('id'))
   const body = await c.req.json()
+  const [existing] = await db.select().from(schema.characters).where(eq(schema.characters.id, id))
+  if (!existing) return notFound(c, '角色不存在')
+
   const updates: Record<string, any> = { updatedAt: now() }
   for (const key of ['name', 'role', 'description', 'appearance', 'styling', 'imageUrl', 'localPath']) {
     const snakeKey = key.replace(/[A-Z]/g, m => '_' + m.toLowerCase())
@@ -67,6 +71,17 @@ app.put('/:id', async (c) => {
   // 手动编辑最终提示词时以传入值为准；未传入则保留原值（修改信息时不再自动置空）
   if (body.final_prompt !== undefined) updates.finalPrompt = body.final_prompt || null
   else if (body.finalPrompt !== undefined) updates.finalPrompt = body.finalPrompt || null
+
+  const newImageUrl = updates.imageUrl as string | undefined
+  if (shouldRecordImageHistory(body, existing.imageUrl, newImageUrl)) {
+    await recordAssetImageHistory({
+      dramaId: existing.dramaId,
+      localPath: newImageUrl!,
+      characterId: id,
+      source: 'upload',
+    })
+  }
+
   await db.update(schema.characters).set(updates).where(eq(schema.characters.id, id))
   return success(c)
 })

@@ -23,9 +23,10 @@ app.post('/', async (c) => {
   const body = await c.req.json()
   if (!body.drama_id) return badRequest(c, 'drama_id required')
 
-  // 图片/视频配置：显式传入优先，缺省时自动锁定当前启用的最高优先级官方配置
+  // 图片/视频/图生图配置：显式传入优先，缺省时自动锁定当前启用的最高优先级官方配置
   const imageConfigId = body.image_config_id ?? await getActiveConfigId('image')
   const videoConfigId = body.video_config_id ?? await getActiveConfigId('video')
+  const img2imgConfigId = body.img2img_config_id ?? await getActiveConfigId('img2img')
   if (!imageConfigId) return badRequest(c, '未找到启用的图片生成配置，请先在设置中心添加')
   if (!videoConfigId) return badRequest(c, '未找到启用的视频生成配置，请先在设置中心添加')
   const ts = now()
@@ -42,6 +43,7 @@ app.post('/', async (c) => {
     title: body.title || `第${nextNum}集`,
     imageConfigId,
     videoConfigId,
+    img2imgConfigId,
     // 视频分辨率在创建集时固定（480p/720p），后续可通过 PUT 修改
     resolution: body.resolution === '480p' ? '480p' : '720p',
     createdAt: ts,
@@ -56,6 +58,7 @@ app.post('/', async (c) => {
     title: ep.title,
     image_config_id: ep.imageConfigId,
     video_config_id: ep.videoConfigId,
+    img2img_config_id: ep.img2imgConfigId,
     resolution: ep.resolution,
   })
 })
