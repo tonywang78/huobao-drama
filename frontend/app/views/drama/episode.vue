@@ -222,18 +222,6 @@
               <span class="tag mono">{{ assetReadyCount }}/{{ assetTotalCount }} 已就绪</span>
               <span class="tag">{{ lockedImageConfigLabel }}</span>
               <div class="ml-auto flex gap-1 asset-bar-actions">
-                <button
-                  v-for="t in EXTRACT_TARGETS"
-                  :key="t.key"
-                  class="btn btn-sm asset-btn-extract"
-                  :disabled="isExtracting(t.key)"
-                  @click="doExtract(t.key)"
-                >
-                  <Loader2 v-if="isExtracting(t.key)" :size="11" class="animate-spin" />
-                  <svg v-else width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                  {{ (t.key === 'characters' ? chars.length : t.key === 'scenes' ? scenes.length : propItems.length) ? `重提${t.label}` : `提取${t.label}` }}
-                </button>
-                <span class="asset-bar-divider" />
                 <button class="btn btn-sm asset-btn-batch" @click="batchCharImages">
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                   批量角色
@@ -246,25 +234,21 @@
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                   批量道具
                 </button>
+                <button class="btn btn-sm" @click="openAssetImport"><Upload :size="11" /> 导入文件</button>
               </div>
             </div>
-            <div v-if="extractingTargets.length && !chars.length && !scenes.length && !propItems.length" class="step-loading">
-              <Loader2 :size="24" class="animate-spin" style="color:var(--accent)" />
-              <div class="loading-text">正在提取{{ extractingLabels }}...</div>
-            </div>
-            <div v-else-if="!chars.length && !scenes.length && !propItems.length" class="step-empty asset-empty-state">
+            <div v-if="!chars.length && !scenes.length && !propItems.length" class="step-empty asset-empty-state">
               <div class="empty-visual">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <Plus :size="32" />
               </div>
-              <div class="empty-title">开始提取资产</div>
-              <div class="empty-desc">角色、场景和道具会在提取后显示在这里，可分别单独提取，也可一键并行提取全部。也可从项目素材库选入其他集已有资产。</div>
+              <div class="empty-title">添加资产</div>
+              <div class="empty-desc">逐个新增角色、场景与道具，从素材库选入，或上传 md/txt 批量导入。</div>
               <div class="asset-empty-actions">
-                <button class="btn btn-primary" :disabled="!!extractingTargets.length" @click="doExtractAll">
-                  <Loader2 v-if="extractingTargets.length" :size="13" class="animate-spin" />
-                  <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                  {{ extractingTargets.length ? `正在提取${extractingLabels}…` : '开始提取' }}
-                </button>
+                <button class="btn btn-primary" @click="openAssetCreate('character')"><Plus :size="13" /> 新增角色</button>
+                <button class="btn btn-primary" @click="openAssetCreate('scene')"><Plus :size="13" /> 新增场景</button>
+                <button class="btn btn-primary" @click="openAssetCreate('prop')"><Plus :size="13" /> 新增道具</button>
                 <button class="btn" @click="openAssetPick('character')">从素材库选入</button>
+                <button class="btn" @click="openAssetImport"><Upload :size="13" /> 导入文件</button>
               </div>
             </div>
             <template v-else>
@@ -459,6 +443,10 @@
               <span class="tag mono">{{ sbs.length }} 段落 · {{ totalDuration }}s</span>
               <span class="tag">{{ lockedVideoConfigLabel }}</span>
               <div class="ml-auto flex gap-1">
+                <button class="btn btn-sm" :disabled="rn || creatingSb" @click="storyboardImportOpen = true">
+                  <Upload :size="11" />
+                  导入
+                </button>
                 <button class="btn btn-sm" :disabled="rn" @click="doBreakdown">
                   <Loader2 v-if="rt === 'storyboard_breaker'" :size="11" class="animate-spin" />
                   <svg v-else width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
@@ -541,6 +529,25 @@
                         <span class="shot-flag flag-video" :class="{ on: hasVid(sb) }" :title="hasVid(sb) ? '已生成视频' : '未生成视频'"><i class="dot"></i>视</span>
                       </div>
                     </div>
+                    <div v-if="!sbSelectMode" class="shot-insert-actions" @click.stop>
+                      <span
+                        v-if="i === 0"
+                        role="button"
+                        tabindex="-1"
+                        class="shot-insert-btn"
+                        :class="{ disabled: creatingSb }"
+                        title="在此前插入"
+                        @click="!creatingSb && addStoryboard({ beforeId: sb.id })"
+                      >前插</span>
+                      <span
+                        role="button"
+                        tabindex="-1"
+                        class="shot-insert-btn"
+                        :class="{ disabled: creatingSb }"
+                        title="在此后插入"
+                        @click="!creatingSb && addStoryboard({ afterId: sb.id })"
+                      >后插</span>
+                    </div>
                     <span
                       v-if="!sbSelectMode"
                       role="button"
@@ -551,6 +558,16 @@
                     >
                       <X :size="11" />
                     </span>
+                  </button>
+                  <button
+                    type="button"
+                    class="shot-add-footer"
+                    :disabled="creatingSb || rn"
+                    @click="addStoryboard()"
+                  >
+                    <Loader2 v-if="creatingSb" :size="12" class="animate-spin" />
+                    <Plus v-else :size="12" />
+                    新建分镜
                   </button>
                 </div>
                 <div v-if="sbSelectMode" class="shot-select-bar">
@@ -700,12 +717,23 @@
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><rect x="2" y="2" width="20" height="20" rx="2.5"/><line x1="7" y1="8" x2="7" y2="16"/><line x1="10" y1="8" x2="10" y2="16"/><line x1="13" y1="8" x2="13" y2="16"/></svg>
               </div>
               <div class="empty-title">开始拆分分镜</div>
-              <div class="empty-desc">根据剧本、角色和场景拆分镜头，生成分镜描述和绑定信息。</div>
-              <button class="btn btn-primary" :disabled="rn" @click="doBreakdown">
-                <Loader2 v-if="rt === 'storyboard_breaker'" :size="13" class="animate-spin" />
-                <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                开始拆分
-              </button>
+              <div class="empty-desc">可用 AI 根据剧本拆分，手工逐条新建，或导入运镜/分镜文件。</div>
+              <div class="step-empty-actions">
+                <button class="btn btn-primary" :disabled="rn || creatingSb" @click="doBreakdown">
+                  <Loader2 v-if="rt === 'storyboard_breaker'" :size="13" class="animate-spin" />
+                  <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                  开始拆分
+                </button>
+                <button class="btn" :disabled="rn || creatingSb" @click="addStoryboard()">
+                  <Loader2 v-if="creatingSb" :size="13" class="animate-spin" />
+                  <Plus v-else :size="13" />
+                  手工新建
+                </button>
+                <button class="btn" :disabled="rn || creatingSb" @click="storyboardImportOpen = true">
+                  <Upload :size="13" />
+                  导入文件
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1628,6 +1656,22 @@
         </div>
       </div>
 
+      <AssetImportDialog
+        :open="assetImportOpen"
+        :drama-id="dramaId"
+        :episode-id="epId"
+        @close="assetImportOpen = false"
+        @imported="onAssetImported"
+      />
+
+      <StoryboardImportDialog
+        :open="storyboardImportOpen"
+        :episode-id="epId"
+        :has-existing="!!sbs.length"
+        @close="storyboardImportOpen = false"
+        @imported="onStoryboardImported"
+      />
+
       <ConfirmDialog
         :open="assetDelete.open"
         :title="`从本集移除${assetDeleteTypeLabel}`"
@@ -1656,7 +1700,7 @@
 import { toast } from 'vue-sonner'
 import {
   Users, Video, FileText, FolderKanban, Clapperboard, Download, Loader2,
-  MapPin, Play, Plus, X, ListTodo,
+  MapPin, Play, Plus, X, ListTodo, Upload,
 } from 'lucide-vue-next'
 import { api, dramaAPI, episodeAPI, storyboardAPI, characterAPI, sceneAPI, propAPI, taskAPI, mergeAPI, aiConfigAPI, uploadAPI } from '~/composables/useApi'
 import { useAgent } from '~/composables/useAgent'
@@ -1838,6 +1882,16 @@ function closeAssetDetail() {
 
 // ─── 手动新增资产 ────────────────────────────────────────────
 const ASSET_TYPE_SHORT = { character: '角色', scene: '场景', prop: '道具' }
+const assetImportOpen = ref(false)
+function openAssetImport() { assetImportOpen.value = true }
+async function onAssetImported() { assetImportOpen.value = false; await refresh() }
+
+const storyboardImportOpen = ref(false)
+async function onStoryboardImported() {
+  storyboardImportOpen.value = false
+  await refresh()
+}
+
 const assetCreate = ref({ open: false, type: 'character', saving: false })
 const assetCreateDraft = ref({})
 const assetCreateTypeLabel = computed(() => ASSET_TYPE_SHORT[assetCreate.value.type] || '资产')
@@ -1948,6 +2002,33 @@ async function confirmDeleteAsset() {
     toast.error(e.message)
   } finally {
     assetDelete.value.loading = false
+  }
+}
+
+// ─── 手工新建 / 插入分镜 ───
+const creatingSb = ref(false)
+
+async function addStoryboard(opts = {}) {
+  if (!epId.value || creatingSb.value) return
+  creatingSb.value = true
+  try {
+    const payload = {
+      episode_id: epId.value,
+      duration: 10,
+    }
+    if (opts.afterId) payload.after_storyboard_id = opts.afterId
+    if (opts.beforeId) payload.before_storyboard_id = opts.beforeId
+    const created = await storyboardAPI.create(payload)
+    await refresh()
+    const newId = created?.id
+    if (newId) {
+      selectedSb.value = sbs.value.find(sb => sb.id === newId) || selectedSb.value
+    }
+    toast.success(opts.afterId || opts.beforeId ? '已插入分镜' : '已新建分镜')
+  } catch (e) {
+    toast.error(e.message || '新建分镜失败')
+  } finally {
+    creatingSb.value = false
   }
 }
 
@@ -2829,64 +2910,9 @@ function skipRewrite() {
   panel.value = 'production'
   prodTab.value = 'assets'
 }
-// 资产提取：按类型独立的异步任务（后端任务表驱动），三类可并行；前端轮询状态直到完成
-const EXTRACT_TARGETS = [
-  { key: 'characters', label: '角色' },
-  { key: 'scenes', label: '场景' },
-  { key: 'props', label: '道具' },
-]
-const extractingTargets = ref([])
-const extractingLabels = computed(() => EXTRACT_TARGETS.filter(t => extractingTargets.value.includes(t.key)).map(t => t.label).join('、'))
-function isExtracting(target) { return extractingTargets.value.includes(target) }
-
-function doExtract(target) {
-  if (isExtracting(target) || !epId.value) return
-  saveScr()
-  extractingTargets.value.push(target)
-  episodeAPI.extract(epId.value, target, chatModelOverride(), chatConfigId())
-    .then(() => pollExtractStatus(target))
-    .catch(e => {
-      extractingTargets.value = extractingTargets.value.filter(t => t !== target)
-      toast.error(e.message)
-    })
-}
-function doExtractAll() { EXTRACT_TARGETS.forEach(t => doExtract(t.key)) }
-
-function pollExtractStatus(target, attempts = 150) {
-  const label = EXTRACT_TARGETS.find(t => t.key === target)?.label || target
-  const tick = async (left) => {
-    try {
-      const st = await episodeAPI.extractStatus(epId.value)
-      const task = st?.[target]
-      if (task && task.status !== 'running') {
-        extractingTargets.value = extractingTargets.value.filter(t => t !== target)
-        if (task.status === 'done') {
-          toast.success(`${label}提取完成`)
-          await refresh()
-        } else {
-          toast.error(task.error || `${label}提取失败`)
-        }
-        return
-      }
-    } catch {}
-    if (left > 0) setTimeout(() => tick(left - 1), 2500)
-    else extractingTargets.value = extractingTargets.value.filter(t => t !== target)
-  }
-  setTimeout(() => tick(attempts), 2500)
-}
-
-/** 页面加载后恢复仍在运行的提取任务状态（刷新页面不丢进度展示） */
+/** 页面加载后恢复仍在运行的批量视频提示词任务 */
 async function syncExtractStatus() {
   if (!epId.value) return
-  try {
-    const st = await episodeAPI.extractStatus(epId.value)
-    for (const t of EXTRACT_TARGETS) {
-      if (st?.[t.key]?.status === 'running' && !isExtracting(t.key)) {
-        extractingTargets.value.push(t.key)
-        pollExtractStatus(t.key)
-      }
-    }
-  } catch {}
   try {
     const vp = await episodeAPI.videoPromptsStatus(epId.value)
     if (vp?.status === 'running' && !videoPromptBatch.value.running) {
@@ -4568,6 +4594,56 @@ onMounted(async () => { await refresh(); loadConfigs(); syncExtractStatus() })
 .shot-list-title { font-size: 13px; font-weight: 700; color: var(--text-0); }
 .shot-list-sub { margin-top: 3px; font-size: 11px; color: var(--text-3); line-height: 1.45; }
 .shot-list-body { flex: 1; min-height: 0; overflow-y: auto; padding: 6px; }
+.shot-insert-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 2px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.storyboard-shot-card:hover .shot-insert-actions,
+.storyboard-shot-card.active .shot-insert-actions { opacity: 1; }
+.shot-insert-btn {
+  appearance: none;
+  border: 1px solid var(--surface-outline);
+  background: var(--bg-1);
+  color: var(--text-2);
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+.shot-insert-btn:hover:not(.disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+.shot-insert-btn.disabled { opacity: 0.5; cursor: not-allowed; }
+.shot-add-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 9px 10px;
+  border: 1px dashed var(--surface-outline);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+.shot-add-footer:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+.shot-add-footer:disabled { opacity: 0.55; cursor: not-allowed; }
 .shot-num {
   font-size: 11px; font-family: var(--font-mono); font-weight: 700;
   color: var(--accent); background: var(--accent-bg);
@@ -4755,16 +4831,8 @@ onMounted(async () => { await refresh(); loadConfigs(); syncExtractStatus() })
 .prod-content { flex: 1; overflow-y: auto; padding: 10px 12px 64px; display: flex; flex-direction: column; gap: 10px; }
 .prod-section-bar { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 
-/* 资产栏动作：提取（虚线中性）与批量生成（强调色）视觉分组 */
+/* 资产栏动作：批量生成图片 */
 .asset-bar-actions { align-items: center; }
-.asset-bar-divider { width: 1px; height: 16px; margin: 0 4px; background: var(--surface-outline-strong); }
-.asset-btn-extract {
-  background: transparent;
-  color: var(--text-2);
-  box-shadow: none;
-  border: 1px dashed var(--surface-outline-strong);
-}
-.asset-btn-extract:hover { background: var(--surface-muted); color: var(--text-1); }
 .asset-btn-batch {
   background: var(--accent-bg);
   color: var(--accent-text);

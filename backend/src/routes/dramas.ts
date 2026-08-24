@@ -3,6 +3,7 @@ import { and, eq, isNull, like, desc } from 'drizzle-orm'
 import { db, getInsertId, schema } from '../db/index.js'
 import { success, badRequest, notFound, created, now } from '../utils/response.js'
 import { toSnakeCase, toSnakeCaseArray } from '../utils/transform.js'
+import { parseAssetImport, confirmAssetImport } from '../services/asset-import.js'
 
 const app = new Hono()
 
@@ -128,6 +129,51 @@ app.put('/:id', async (c) => {
 })
 
 // DELETE /dramas/:id - Soft delete
+
+
+// POST /dramas/:id/assets/import/parse �� Agent �����ϴ��ı������غ�ѡ����д�⣩
+app.post('/:id/assets/import/parse', async (c) => {
+  const dramaId = Number(c.req.param('id'))
+  const [drama] = await db.select().from(schema.dramas).where(eq(schema.dramas.id, dramaId))
+  if (!drama || drama.deletedAt) return notFound(c, '�籾������')
+
+  const body = await c.req.json()
+  const content = body.content || body.text || ''
+  if (!String(content).trim()) return badRequest(c, 'content required')
+
+  try {
+    const candidates = await parseAssetImport(dramaId, String(content), {
+      filename: body.filename || undefined,
+      model: body.model || undefined,
+      configId: body.config_id ?? undefined,
+      episodeId: body.episode_id ? Number(body.episode_id) : undefined,
+    })
+    return success(c, { candidates })
+  } catch (err: any) {
+    return badRequest(c, err?.message || '����ʧ��')
+  }
+})
+
+// POST /dramas/:id/assets/import/confirm �� ���û���ѡ�����⣨��ѡ�Ҽ���
+app.post('/:id/assets/import/confirm', async (c) => {
+  const dramaId = Number(c.req.param('id'))
+  const [drama] = await db.select().from(schema.dramas).where(eq(schema.dramas.id, dramaId))
+  if (!drama || drama.deletedAt) return notFound(c, '�籾������')
+
+  const body = await c.req.json()
+  const items = Array.isArray(body.items) ? body.items : []
+  if (!items.length) return badRequest(c, 'items required')
+
+  try {
+    const result = await confirmAssetImport(dramaId, items, {
+      episodeId: body.episode_id ? Number(body.episode_id) : undefined,
+    })
+    return success(c, result)
+  } catch (err: any) {
+    return badRequest(c, err?.message || '����ʧ��')
+  }
+})
+
 app.delete('/:id', async (c) => {
   const id = Number(c.req.param('id'))
   await db.update(schema.dramas).set({ deletedAt: now() }).where(eq(schema.dramas.id, id))

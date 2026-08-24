@@ -41,6 +41,10 @@ export const dramaAPI = {
   create: (data: any) => api.post('/dramas', data),
   update: (id: number, data: any) => api.put(`/dramas/${id}`, data),
   del: (id: number) => api.del(`/dramas/${id}`),
+  importAssetsParse: (id: number, data: { content: string; filename?: string; episode_id?: number; model?: string; config_id?: number }) =>
+    api.post(`/dramas/${id}/assets/import/parse`, data),
+  importAssetsConfirm: (id: number, data: { items: any[]; episode_id?: number }) =>
+    api.post(`/dramas/${id}/assets/import/confirm`, data),
 }
 
 export const episodeAPI = {
@@ -62,6 +66,10 @@ export const episodeAPI = {
   extractStatus: (id: number) => api.get(`/episodes/${id}/extract-status`),
   generateVideoPrompts: (id: number, model?: string, configId?: number, storyboardIds?: number[]) => api.post(`/episodes/${id}/generate-video-prompts`, { model: model || undefined, config_id: configId || undefined, storyboard_ids: storyboardIds?.length ? storyboardIds : undefined }),
   videoPromptsStatus: (id: number) => api.get(`/episodes/${id}/video-prompts-status`),
+  importStoryboardsParse: (id: number, data: { content: string; filename?: string; model?: string; config_id?: number }) =>
+    api.post(`/episodes/${id}/storyboards/import/parse`, data),
+  importStoryboardsConfirm: (id: number, data: { items: any[]; mode: 'replace' | 'append' }) =>
+    api.post(`/episodes/${id}/storyboards/import/confirm`, data),
 }
 
 export const storyboardAPI = {

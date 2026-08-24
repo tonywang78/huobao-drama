@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { eq } from 'drizzle-orm'
+import { and, desc, eq, gte } from 'drizzle-orm'
 import { db, getInsertId, schema } from '../db/index.js'
 import { success, created, now, badRequest } from '../utils/response.js'
 import { toSnakeCase } from '../utils/transform.js'
@@ -76,21 +76,97 @@ async function validateStoryboardBindings(episodeId: number, sceneId: number | n
   }
 }
 
+async function resolveInsertStoryboardNumber(
+  episodeId: number,
+  afterId: number | null | undefined,
+  beforeId: number | null | undefined,
+): Promise<{ ok: true, number: number } | { ok: false, message: string }> {
+  if (afterId != null && beforeId != null) {
+    return { ok: false, message: 'after_storyboard_id 与 before_storyboard_id 不能同时传入' }
+  }
+
+  if (afterId != null) {
+    const [anchor] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, afterId))
+    if (!anchor || anchor.episodeId !== episodeId) {
+      return { ok: false, message: 'after_storyboard_id 必须属于当前集' }
+    }
+    return { ok: true, number: anchor.storyboardNumber + 1 }
+  }
+
+  if (beforeId != null) {
+    const [anchor] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, beforeId))
+    if (!anchor || anchor.episodeId !== episodeId) {
+      return { ok: false, message: 'before_storyboard_id 必须属于当前集' }
+    }
+    return { ok: true, number: anchor.storyboardNumber }
+  }
+
+  const existing = await db.select({ storyboardNumber: schema.storyboards.storyboardNumber })
+    .from(schema.storyboards)
+    .where(eq(schema.storyboards.episodeId, episodeId))
+  const maxNum = existing.reduce((m, row) => Math.max(m, row.storyboardNumber || 0), 0)
+  return { ok: true, number: maxNum + 1 }
+}
+
+async function shiftStoryboardNumbers(episodeId: number, fromNumber: number, ts: string) {
+  const toShift = await db.select().from(schema.storyboards)
+    .where(and(
+      eq(schema.storyboards.episodeId, episodeId),
+      gte(schema.storyboards.storyboardNumber, fromNumber),
+    ))
+    .orderBy(desc(schema.storyboards.storyboardNumber))
+
+  for (const row of toShift) {
+    await db.update(schema.storyboards)
+      .set({ storyboardNumber: row.storyboardNumber + 1, updatedAt: ts })
+      .where(eq(schema.storyboards.id, row.id))
+  }
+}
+
+async function refreshEpisodeDuration(episodeId: number, ts: string) {
+  const rows = await db.select({ duration: schema.storyboards.duration })
+    .from(schema.storyboards)
+    .where(eq(schema.storyboards.episodeId, episodeId))
+  const totalSeconds = rows.reduce((sum, row) => sum + (row.duration || 10), 0)
+  await db.update(schema.episodes)
+    .set({ duration: Math.ceil(totalSeconds / 60), updatedAt: ts })
+    .where(eq(schema.episodes.id, episodeId))
+}
+
 // POST /storyboards
 app.post('/', async (c) => {
   const body = await c.req.json()
+  const episodeId = Number(body.episode_id)
+  if (!episodeId) return badRequest(c, 'episode_id 必填')
+
+  const afterId = body.after_storyboard_id != null ? Number(body.after_storyboard_id) : null
+  const beforeId = body.before_storyboard_id != null ? Number(body.before_storyboard_id) : null
   const ts = now()
+
+  const resolved = await resolveInsertStoryboardNumber(episodeId, afterId, beforeId)
+  if (!resolved.ok) return badRequest(c, resolved.message)
+
   logTaskStart('StoryboardAPI', 'create', {
-    episodeId: body.episode_id,
-    shotNumber: body.storyboard_number || 1,
+    episodeId,
+    shotNumber: resolved.number,
+    afterId,
+    beforeId,
     sceneId: body.scene_id,
     characterIds: body.character_ids,
   })
   logTaskPayload('StoryboardAPI', 'create body', body)
-  await validateStoryboardBindings(body.episode_id, body.scene_id, body.character_ids, body.prop_ids)
+
+  try {
+    await validateStoryboardBindings(episodeId, body.scene_id, body.character_ids, body.prop_ids)
+  } catch (err: any) {
+    return badRequest(c, err?.message || '绑定校验失败')
+  }
+
+  await shiftStoryboardNumbers(episodeId, resolved.number, ts)
+
   const res = await db.insert(schema.storyboards).values({
-    episodeId: body.episode_id,
-    storyboardNumber: body.storyboard_number || 1,
+    episodeId,
+    storyboardNumber: resolved.number,
     title: body.title,
     description: body.description,
     sceneId: body.scene_id,
@@ -98,10 +174,13 @@ app.post('/', async (c) => {
     createdAt: ts,
     updatedAt: ts,
   })
-  await syncStoryboardCharacters(getInsertId(res), body.character_ids || [])
-  await syncStoryboardProps(getInsertId(res), body.prop_ids || [])
+  const insertId = getInsertId(res)
+  await syncStoryboardCharacters(insertId, body.character_ids || [])
+  await syncStoryboardProps(insertId, body.prop_ids || [])
+  await refreshEpisodeDuration(episodeId, ts)
+
   const [result] = await db.select().from(schema.storyboards)
-    .where(eq(schema.storyboards.id, getInsertId(res)))
+    .where(eq(schema.storyboards.id, insertId))
   logTaskSuccess('StoryboardAPI', 'create', {
     storyboardId: result.id,
     episodeId: result.episodeId,

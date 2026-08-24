@@ -14,6 +14,7 @@ import {
 import { getActiveConfigId } from '../services/ai.js'
 import { EXTRACT_TARGETS, getExtractionStatus, startExtraction, type ExtractTarget } from '../services/extraction.js'
 import { getVideoPromptBatchStatus, startVideoPromptBatch } from '../services/video-prompts.js'
+import { confirmStoryboardImport, parseStoryboardImport } from '../services/storyboard-import.js'
 
 const app = new Hono()
 
@@ -281,6 +282,47 @@ app.post('/:id/generate-video-prompts', async (c) => {
 app.get('/:id/video-prompts-status', async (c) => {
   const id = Number(c.req.param('id'))
   return success(c, getVideoPromptBatchStatus(id))
+})
+
+// POST /episodes/:id/storyboards/import/parse — Agent 解析运镜/分镜文件（不写库）
+app.post('/:id/storyboards/import/parse', async (c) => {
+  const episodeId = Number(c.req.param('id'))
+  const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, episodeId))
+  if (!ep || ep.deletedAt) return notFound(c, '剧集不存在')
+
+  const body = await c.req.json()
+  const content = body.content || body.text || ''
+  if (!String(content).trim()) return badRequest(c, 'content required')
+
+  try {
+    const candidates = await parseStoryboardImport(episodeId, ep.dramaId, String(content), {
+      filename: body.filename || undefined,
+      model: body.model || undefined,
+      configId: body.config_id ?? undefined,
+    })
+    return success(c, { candidates })
+  } catch (err: any) {
+    return badRequest(c, err?.message || '解析失败')
+  }
+})
+
+// POST /episodes/:id/storyboards/import/confirm — 用户勾选后写入分镜
+app.post('/:id/storyboards/import/confirm', async (c) => {
+  const episodeId = Number(c.req.param('id'))
+  const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, episodeId))
+  if (!ep || ep.deletedAt) return notFound(c, '剧集不存在')
+
+  const body = await c.req.json()
+  const items = Array.isArray(body.items) ? body.items : []
+  if (!items.length) return badRequest(c, 'items required')
+  const mode = body.mode === 'replace' ? 'replace' : 'append'
+
+  try {
+    const result = await confirmStoryboardImport(episodeId, items, mode)
+    return success(c, result)
+  } catch (err: any) {
+    return badRequest(c, err?.message || '导入失败')
+  }
 })
 
 // GET /episodes/:episode_id/storyboards

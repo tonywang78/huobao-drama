@@ -800,6 +800,8 @@ const agentDefs = [
   { type: 'extractor', label: '角色场景提取', icon: '🔍' },
   { type: 'storyboard_breaker', label: '分镜拆解', icon: '🎬' },
   { type: 'prompt_generator', label: '提示词', icon: '🖼' },
+  { type: 'asset_importer', label: '资产导入', icon: '📥' },
+  { type: 'storyboard_importer', label: '分镜导入', icon: '📋' },
 ]
 
 function getAgentCfg(type) {

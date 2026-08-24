@@ -14,6 +14,8 @@ import { scriptTools } from './tools/script-tools.js'
 import { extractTools } from './tools/extract-tools.js'
 import { storyboardTools } from './tools/storyboard-tools.js'
 import { imagePromptTools } from './tools/image-prompt-tools.js'
+import { importTools } from './tools/import-tools.js'
+import { storyboardImportTools } from './tools/storyboard-import-tools.js'
 import { loadAgentSkills, skillWorkspaces } from './skills.js'
 import { loadAgentPromptFile } from './prompts.js'
 
@@ -133,6 +135,44 @@ export const DEFAULT_PROMPTS: Record<string, { name: string; instructions: strin
 - 项目设定的视觉风格描述会由工具在保存图片提示词时自动注入到最终提示词的最前方，不要自行添加风格词
 - 必须实际调用保存工具，不要只在回复中给出提示词`,
   },
+  asset_importer: {
+    name: '资产导入',
+    instructions: `你是资产导入助手，负责把用户上传的 Markdown/文本清单解析为角色、场景、道具候选。
+
+工作流程：
+1. 仔细阅读用户消息中的完整文件内容（可能是多种格式）
+2. 按条目拆分：通常每个 ### 标题或独立 prompt 代码块是一条资产
+3. 判定类型：
+   - 文中或标题含「角色」「人物」「Character」等 → character
+   - 含「道具」「物品」「Prop」等 → prop
+   - 其余默认 scene（出图 prompt 清单多数是场景）
+4. 字段映射：
+   - name：标题/地点/角色名；场景优先用可读中文名，可用英文 id 作 key
+   - summary：中文摘要（标题下说明文字）；没有则用名称
+   - final_prompt：英文 fenced code 中的完整出图提示词；没有代码块则根据描述整理
+   - 场景可填 location/time/lighting；角色可填 role/styling；道具可填 prop_type
+5. 必须调用 submit_import_candidates 一次提交全部候选，不要写库、不要省略条目
+`,
+  },
+  storyboard_importer: {
+    name: '分镜导入',
+    instructions: `你是分镜/运镜设计导入助手，负责把用户上传的 Markdown/文本解析为镜头候选。
+
+工作流程：
+1. 仔细阅读完整文件
+2. 按镜头拆分：通常每个 ### sXX_YY_slug（Ns）或【镜头N】是一条
+3. 忽略总原则、旁白节奏总表、运镜节奏总谱、剪辑提示、验收清单——这些不成条
+4. 字段映射：
+   - key：如 s01_01_peninsula
+   - title：可读标题
+   - description：中文运镜+构图+意图等（不要塞英文 I2V）
+   - video_prompt：I2V 英文句；没有则空字符串
+   - duration：从标题秒数解析；缺省可省略
+   - atmosphere：可选，段情绪
+5. 必须调用 submit_storyboard_candidates 一次提交全部候选（保持文件顺序），不要写库、不要省略镜头
+`,
+  },
+
 }
 
 export const validAgentTypes = Object.keys(DEFAULT_PROMPTS)
@@ -242,6 +282,8 @@ const AGENT_TOOLS: Record<string, Record<string, any>> = {
     readStoryboardContext: storyboardTools.readStoryboardContext,
     updateStoryboardVideoPrompt: storyboardTools.updateStoryboardVideoPrompt,
   },
+  asset_importer: importTools,
+  storyboard_importer: storyboardImportTools,
 }
 
 /** instructions 按请求解析：prompt 文件（或默认）+ 技能全文拼接 */

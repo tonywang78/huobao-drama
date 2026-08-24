@@ -161,15 +161,18 @@
 
     <!-- 素材库 -->
     <div v-else-if="activeTab === 'assets'" class="assets-wrap">
-      <div class="seg asset-filter">
-        <button
-          v-for="t in assetTabs"
-          :key="t.value"
-          type="button"
-          class="seg-item"
-          :class="{ on: assetTab === t.value }"
-          @click="assetTab = t.value"
-        >{{ t.label }}</button>
+      <div class="assets-toolbar">
+        <div class="seg asset-filter">
+          <button
+            v-for="t in assetTabs"
+            :key="t.value"
+            type="button"
+            class="seg-item"
+            :class="{ on: assetTab === t.value }"
+            @click="assetTab = t.value"
+          >{{ t.label }}</button>
+        </div>
+        <button type="button" class="btn btn-sm" @click="assetImportOpen = true">导入文件</button>
       </div>
 
       <!-- 全部素材为空 -->
@@ -180,7 +183,8 @@
           </svg>
         </div>
         <p class="empty-title">还没有任何素材</p>
-        <p class="empty-desc">在剧情工作台中通过「提取资产」生成角色、场景与道具后，会自动收录到这里，并可直接生成素材图。</p>
+        <p class="empty-desc">可在此导入 md/txt 资产清单，或在剧情工作台中新增/选入角色、场景与道具后自动收录到这里。</p>
+        <button type="button" class="btn btn-primary" style="margin-top:10px" @click="assetImportOpen = true">导入文件</button>
       </div>
 
       <div v-else-if="materials.length" class="asset-groups">
@@ -320,7 +324,7 @@
             </svg>
           </div>
           <p class="empty-title">暂无{{ tabLabel(assetTab) }}素材</p>
-          <p class="empty-desc">在剧情工作台中提取并生成{{ tabLabel(assetTab) }}后，会显示在这里。</p>
+          <p class="empty-desc">在剧情工作台中新增或选入并生成{{ tabLabel(assetTab) }}后，会显示在这里。</p>
         </div>
       </div>
 
@@ -553,6 +557,13 @@
       @confirm="confirmDelEpisode"
       @cancel="episodeToDelete = null"
     />
+    <AssetImportDialog
+      :open="assetImportOpen"
+      :drama-id="dramaId"
+      :episode-id="0"
+      @close="assetImportOpen = false"
+      @imported="onAssetImported"
+    />
     <ConfirmDialog
       :open="!!materialToDelete"
       :title="`删除${materialToDelete?.kind || '素材'}`"
@@ -585,6 +596,11 @@ const resolutionOptions = [
 ]
 const newEpisodeResolution = ref('720p')
 const epResMenuId = ref(null)
+const assetImportOpen = ref(false)
+async function onAssetImported() {
+  assetImportOpen.value = false
+  await load()
+}
 
 function epResolution(ep) { return ep.resolution === '480p' ? '480p' : '720p' }
 
