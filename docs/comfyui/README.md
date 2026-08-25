@@ -10,6 +10,9 @@
 当前仓库内置默认 API JSON 面向 **MiniMax H3**（24GB 量化栈），详见下方「默认模型文件」。  
 **代码侧只做通用占位符 / bindings 注入，不依赖具体模型名或节点类型。**
 
+视频提示词（`video_prompt`）按配置 `settings.videoEngine` 选择引擎规则（`minimax-h3` / `seedance` / `default`），与 workflow 解耦。  
+**ComfyUI 视频配置请把 `videoEngine` 设成与底层节点栈一致**（例如 MiniMax H3 workflow → `minimax-h3`）；未设置时 Comfy 回退为 `default`，不会仅因配置名含 MiniMax 而走 H3 规则。
+
 ## 参数绑定（推荐）
 
 设置页支持「解析 API JSON → Source→Pin 绑定」，结果写入配置 `settings.bindings`，运行时优先于 `{{PLACEHOLDER}}`。

@@ -18,7 +18,13 @@ const SKILLS_DIR = path.join(WORKSPACE_DIR, 'skills')
 // 启动时确保工作目录存在（Agent 文件读写的 jail 根）
 fs.mkdirSync(SKILLS_DIR, { recursive: true })
 
-/** 每个 Agent 注册的 skill 目录（相对 workspace/skills/，含子规范目录；目录名需符合 Agent Skills 规范：小写+连字符） */
+/**
+ * 每个 Agent 注册的 skill 目录（相对 workspace/skills/，含子规范目录；目录名需符合 Agent Skills 规范：小写+连字符）
+ *
+ * 注意：`prompt-generator/video-engines/*` 也在 Skills 高级配置里维护（属 prompt_generator 前缀），
+ * 但故意不列入本 map —— 避免注入角色/场景/道具提示词；生成 video_prompt 时由 video-engine 服务按
+ * settings.videoEngine 按需读取并写入 user message。
+ */
 const AGENT_SKILL_MAP: Record<string, string[]> = {
   script_rewriter: ['script-rewriter'],
   extractor: ['extractor'],
@@ -32,6 +38,9 @@ const AGENT_SKILL_MAP: Record<string, string[]> = {
   asset_importer: ['asset-importer'],
   storyboard_importer: ['storyboard-importer'],
 }
+
+/** 视频引擎 skill 相对 workspace 的路径前缀（Skills UI / 按需加载共用） */
+export const VIDEO_ENGINE_SKILL_PREFIX = 'prompt-generator/video-engines'
 
 /** 每个 Agent 的 Workspace（filesystem 工作目录 + 原生技能注册）
  *  skills 用动态解析器按目录前缀匹配：设置页新建的子技能无需重启即可被发现 */

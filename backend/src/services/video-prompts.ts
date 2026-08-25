@@ -7,6 +7,12 @@ import { db, schema } from '../db/index.js'
 import { mastra } from '../mastra/index.js'
 import { buildAgentRequestContext } from '../agents/context.js'
 import { logTaskError, logTaskProgress, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
+import {
+  buildVideoPromptUserMessage,
+  loadVideoEngineSkill,
+  resolveVideoEngine,
+  type VideoEngine,
+} from './video-engine.js'
 
 export interface VideoPromptBatchStatus {
   status: 'running' | 'done' | 'error'
@@ -39,13 +45,18 @@ export async function startVideoPromptBatch(
     : sbs.filter(sb => !(sb.videoPrompt || '').trim())
   if (!pending.length) return { started: false, total: 0 }
 
-  // 视频模型标签：跟随该集锁定的视频配置，供 Agent 按模型特性生成
+  // 视频引擎：跟随该集锁定的视频配置 settings.videoEngine（缺省按 provider 回退）
   const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, episodeId))
-  let videoLabel = '默认'
+  let configLabel = '默认'
+  let engine: VideoEngine = 'default'
   if (ep?.videoConfigId) {
     const [cfg] = await db.select().from(schema.aiServiceConfigs).where(eq(schema.aiServiceConfigs.id, ep.videoConfigId))
-    if (cfg) videoLabel = `${cfg.name} (${cfg.provider})`
+    if (cfg) {
+      configLabel = `${cfg.name} (${cfg.provider})`
+      engine = resolveVideoEngine(cfg)
+    }
   }
+  const engineSkill = await loadVideoEngineSkill(engine)
 
   const task: VideoPromptBatchStatus = {
     status: 'running',
@@ -56,7 +67,13 @@ export async function startVideoPromptBatch(
   }
   tasks.set(episodeId, task)
 
-  logTaskStart('VideoPrompt', 'batch', { episodeId, dramaId, total: pending.length, model: opts.model || undefined })
+  logTaskStart('VideoPrompt', 'batch', {
+    episodeId,
+    dramaId,
+    total: pending.length,
+    model: opts.model || undefined,
+    videoEngine: engine,
+  })
   ;(async () => {
     const agent = mastra.getAgent('prompt_generator')
     if (!agent) throw new Error('视频提示词 Agent 不可用')
@@ -68,12 +85,23 @@ export async function startVideoPromptBatch(
     })
     for (const sb of pending) {
       task.current_storyboard_id = sb.id
-      logTaskProgress('VideoPrompt', 'batch-shot', { episodeId, storyboardId: sb.id, index: task.completed + task.failed + 1, total: task.total })
+      logTaskProgress('VideoPrompt', 'batch-shot', {
+        episodeId,
+        storyboardId: sb.id,
+        index: task.completed + task.failed + 1,
+        total: task.total,
+        videoEngine: engine,
+      })
       try {
         await agent.generate([{
           role: 'user',
-          content: `请为分镜 #${sb.storyboardNumber}(ID:${sb.id})生成视频提示词(video_prompt)。视频模型:${videoLabel},请根据该模型的特性和时长限制生成。
-请先调用 read_storyboard_context 获取该分镜的画面描述(含【镜头N】子镜头与台词/旁白)、氛围及时长，据此生成 video_prompt(按 3 秒分段换行、用 @角色名/@场景名/@道具名 引用参考素材；段落内允许多镜头切镜，段与段可以是不同景别/角度/对象，但不跨场景，切镜点对齐分镜 description 的【镜头N】结构),然后调用 update_storyboard_video_prompt 保存到分镜 ID:${sb.id}。不要调用 update_storyboard，不要重新拆分整集。`,
+          content: buildVideoPromptUserMessage({
+            storyboardNumber: sb.storyboardNumber,
+            storyboardId: sb.id,
+            configLabel,
+            engine,
+            engineSkill,
+          }),
         }], { maxSteps: 8, requestContext })
         // 以实际落库为准判定成败
         const [fresh] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, sb.id))
@@ -92,7 +120,7 @@ export async function startVideoPromptBatch(
       task.status = 'done'
       task.finished_at = new Date().toISOString()
       task.current_storyboard_id = undefined
-      logTaskSuccess('VideoPrompt', 'batch', { episodeId, total: task.total, completed: task.completed, failed: task.failed })
+      logTaskSuccess('VideoPrompt', 'batch', { episodeId, total: task.total, completed: task.completed, failed: task.failed, videoEngine: engine })
     })
     .catch((err: any) => {
       task.status = 'error'

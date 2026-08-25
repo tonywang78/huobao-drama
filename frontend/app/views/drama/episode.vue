@@ -3089,29 +3089,32 @@ function doBreakdown() {
 - 只有纯环境空镜头才可以不绑定角色`, dramaId, epId.value, refresh, chatModelOverride(), chatConfigId())
 }
 
-// 按需为单个分镜生成视频提示词：由 prompt_generator 读取分镜字段生成并保存到 video_prompt
+// 按需为单个分镜生成视频提示词：走与批量相同的后端入口（注入 videoEngine skill）
 async function genVideoPrompt(sb) {
-  if (!sb || videoPromptGeneratingIds.value.includes(sb.id)) return
+  if (!sb || !epId.value) return
+  if (videoPromptGeneratingIds.value.includes(sb.id) || videoPromptBatch.value.running) return
   const idx = sbs.value.indexOf(sb) + 1
-  const cfg = videoConfigs.value.find(c => c.id === lockedVideoConfigId.value)
-  const label = cfg ? `${cfg.name} (${cfg.provider})` : '默认'
-  const charNames = getStoryboardCharacters(sb).map(c => c.name).join('、') || '无'
-  const propNames = getStoryboardProps(sb).map(p => p.name).join('、') || '无'
   videoPromptGeneratingIds.value.push(sb.id)
   try {
-    await api.post(`/agent/prompt_generator/chat`, {
-      message: `请为分镜 #${idx}(ID:${sb.id})生成视频提示词(video_prompt)。视频模型:${label},请根据该模型的特性和时长限制生成。
-
-该分镜信息:时长 ${sb.duration || 10}s;场景:${getSceneName(sb) || '未绑定'};角色:${charNames};道具:${propNames}。
-
-请先调用 read_storyboard_context 获取该分镜的画面描述(含【镜头N】子镜头与台词/旁白)、氛围及时长,据此生成 video_prompt(按 3 秒分段换行、用 @角色名/@场景名/@道具名 引用参考素材；段落内允许多镜头切镜,但不跨场景,切镜点对齐 description 的【镜头N】结构),然后调用 update_storyboard_video_prompt 保存到分镜 ID:${sb.id}。不要调用 update_storyboard,不要重新拆分整集。`,
-      drama_id: dramaId,
-      episode_id: epId.value,
-      model: chatModelOverride() || undefined,
-      config_id: chatConfigId() || undefined,
-    })
-    toast.success(`分镜 #${idx} 视频提示词已生成`)
-    await refresh()
+    const res = await episodeAPI.generateVideoPrompts(
+      epId.value,
+      chatModelOverride(),
+      chatConfigId(),
+      [sb.id],
+    )
+    if (res?.already_running) {
+      videoPromptBatch.value = { running: true, total: 0, completed: 0 }
+      pollVideoPromptBatch()
+      toast.info('已有提示词任务进行中，已接入轮询')
+      return
+    }
+    if (!res?.total) {
+      toast.info('分镜不存在或未能启动生成')
+      return
+    }
+    videoPromptBatch.value = { running: true, total: res.total, completed: 0 }
+    toast.info(`正在生成分镜 #${idx} 视频提示词…`)
+    pollVideoPromptBatch()
   } catch (e) {
     toast.error(e.message)
   } finally {

@@ -231,7 +231,12 @@
               <div class="skills-head-copy">
                 <h2 class="settings-title">{{ selectedAgentLabel }}</h2>
                 <div class="dim" style="font-size:12px;margin-top:2px">{{ selectedAgentType }} — Skills</div>
-                <p class="settings-desc">Skills 仅作为 Agent 的高级提示词层使用，不影响工作台常规功能入口。</p>
+                <p class="settings-desc">
+                  Skills 仅作为 Agent 的高级提示词层使用，不影响工作台常规功能入口。
+                  <template v-if="selectedAgent === 'prompt_generator'">
+                    「video-engines/*」由视频配置的 videoEngine 按需注入，不会进入角色/场景提示词。
+                  </template>
+                </p>
               </div>
               <button class="btn btn-primary btn-sm ml-auto" @click="startAddSkill">
                 <Plus :size="13" /> 新增 Skill
@@ -253,8 +258,11 @@
                 <div class="skill-card-head" @click="toggleSkillEdit(s.id)">
                   <FileText :size="14" style="color:var(--accent);flex-shrink:0" />
                   <div style="flex:1;min-width:0">
-                    <div style="font-weight:600;font-size:13px">{{ s.name }}</div>
-                    <div class="dim" style="font-size:11px">{{ s.description }}</div>
+                    <div style="font-weight:600;font-size:13px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                      <span>{{ s.name }}</span>
+                      <span v-if="isVideoEngineSkill(s.id)" class="tag tag-accent" style="font-size:10px">videoEngine</span>
+                    </div>
+                    <div class="dim" style="font-size:11px">{{ s.description || s.id }}</div>
                   </div>
                   <button class="btn btn-danger btn-icon btn-sm" style="margin-right:4px" @click.stop="skillToDelete = s.id">
                     <Trash2 :size="13" />
@@ -324,6 +332,15 @@
           <label class="field"><span class="field-label">API Key</span><input v-model="cfgForm.api_key" class="input" type="password" :placeholder="cfgForm.provider === 'comfyui' ? '可选，反向代理鉴权时填写' : 'sk-...'" /></label>
           <label class="field"><span class="field-label">Base URL</span><input v-model="cfgForm.base_url" class="input" placeholder="https://..." /></label>
           <label class="field"><span class="field-label">模型（逗号分隔）</span><input v-model="cfgForm.modelStr" class="input" placeholder="model-name" /></label>
+          <label v-if="cfgForm.service_type === 'video'" class="field">
+            <span class="field-label">视频引擎</span>
+            <BaseSelect
+              v-model="cfgForm.videoEngine"
+              :options="videoEngineSelectOptions"
+              placeholder="选择底层引擎"
+            />
+            <span class="field-hint">生成 video_prompt 时按引擎注入专用规则。ComfyUI 请与 workflow 底层栈一致（如 MiniMax H3 → minimax-h3）。</span>
+          </label>
           <div v-if="showComfyWorkflowEditor" class="field comfy-workflow-field">
             <div class="field-label-row">
               <span class="field-label">ComfyUI Workflow API JSON</span>
@@ -385,7 +402,14 @@
         <div class="dialog-body skill-dialog-body">
           <label class="field">
             <span class="field-label">Skill 目录名 <span class="dim">(英文，唯一)</span></span>
-            <input v-model="newSkillForm.id" class="input" placeholder="如 custom-extraction" />
+            <input
+              v-model="newSkillForm.id"
+              class="input"
+              :placeholder="selectedAgent === 'prompt_generator' ? '如 video-engines/my-engine 或 custom-rule' : '如 custom-extraction'"
+            />
+            <span v-if="selectedAgent === 'prompt_generator'" class="field-hint">
+              视频引擎规则请用 <code>video-engines/引擎名</code>（目录名须与 frontmatter name 一致）；生成时由配置的 videoEngine 选用。
+            </span>
           </label>
           <label class="field">
             <span class="field-label">名称</span>
@@ -492,10 +516,27 @@ const cfgTesting = ref(false)
 const cfgTestResult = ref(null)
 const huobaoApiKey = ref('')
 const huobaoSaving = ref(false)
-const cfgForm = reactive({ name: '', provider: '', api_key: '', base_url: '', modelStr: '', service_type: 'text', priority: 0, workflowApiStr: '', bindings: {} })
+const cfgForm = reactive({ name: '', provider: '', api_key: '', base_url: '', modelStr: '', service_type: 'text', priority: 0, workflowApiStr: '', bindings: {}, videoEngine: 'default' })
 const serviceTypes = [{ type: 'text', label: '文本' }, { type: 'image', label: '图片' }, { type: 'img2img', label: '图生图' }, { type: 'video', label: '视频' }]
 const providers = ['gemini', 'openai', 'volcengine', 'minimax', 'comfyui']
 const providerSelectOptions = computed(() => providers.map(p => ({ label: p, value: p })))
+const VIDEO_ENGINES = [
+  { value: 'minimax-h3', label: 'minimax-h3（MiniMax H3）' },
+  { value: 'seedance', label: 'seedance（Seedance / 火山）' },
+  { value: 'default', label: 'default（仅底座规则）' },
+]
+const videoEngineSelectOptions = VIDEO_ENGINES.map(e => ({ label: e.label, value: e.value }))
+function defaultVideoEngineForProvider(provider) {
+  const p = (provider || '').toLowerCase()
+  if (p === 'minimax') return 'minimax-h3'
+  if (p === 'volcengine') return 'seedance'
+  return 'default'
+}
+function videoEngineFromSettings(settings) {
+  const v = settings?.videoEngine
+  if (VIDEO_ENGINES.some(e => e.value === v)) return v
+  return ''
+}
 const serviceMeta = {
   text: { label: '文本', desc: '剧本改写、角色场景提取、分镜拆解等 Agent 文本能力' },
   image: { label: '图片', desc: '角色图、场景图与镜头图等静态图像生成' },
@@ -528,8 +569,8 @@ const huobaoQuickConfigs = [
   { service_type: 'image', provider: 'openai', name: '火宝图片服务 · OpenAI', base_url: 'https://api.chatfire.site', model: ['gpt-image-2'], priority: 99 },
   { service_type: 'image', provider: 'gemini', name: '火宝图片服务 · Gemini', base_url: 'https://api.chatfire.site', model: ['gemini-3-pro-image', 'gemini-3.1-flash-image'], priority: 97 },
   { service_type: 'img2img', provider: 'gemini', name: '火宝图生图服务 · Gemini', base_url: 'https://api.chatfire.site', model: ['gemini-3-pro-image', 'gemini-3.1-flash-image'], priority: 95 },
-  { service_type: 'video', provider: 'volcengine', name: '火宝视频服务 · Seedance', base_url: 'https://api.chatfire.site/volcengine', model: ['doubao-seedance-2-0-fast-260128', 'doubao-seedance-2-0-260128', 'doubao-seedance-2-0-mini-260615'], priority: 98 },
-  { service_type: 'video', provider: 'minimax', name: '火宝视频服务 · MiniMax', base_url: 'https://api.chatfire.site/minimax', model: ['MiniMax-H3'], priority: 96 },
+  { service_type: 'video', provider: 'volcengine', name: '火宝视频服务 · Seedance', base_url: 'https://api.chatfire.site/volcengine', model: ['doubao-seedance-2-0-fast-260128', 'doubao-seedance-2-0-260128', 'doubao-seedance-2-0-mini-260615'], priority: 98, settings: { videoEngine: 'seedance' } },
+  { service_type: 'video', provider: 'minimax', name: '火宝视频服务 · MiniMax', base_url: 'https://api.chatfire.site/minimax', model: ['MiniMax-H3'], priority: 96, settings: { videoEngine: 'minimax-h3' } },
 ]
 
 function byType(t) { return cfgs.value.filter(c => c.service_type === t) }
@@ -549,6 +590,9 @@ function applyProviderPreset(type, provider) {
   if (provider !== 'comfyui') {
     cfgForm.workflowApiStr = ''
     cfgForm.bindings = {}
+  }
+  if (type === 'video') {
+    cfgForm.videoEngine = defaultVideoEngineForProvider(provider)
   }
 }
 
@@ -580,23 +624,32 @@ function bindingsFromSettings(settings) {
 }
 
 function buildSettingsPayload() {
-  if (!showComfyWorkflowEditor.value) return undefined
-  const raw = cfgForm.workflowApiStr.trim()
-  const bindings = cfgForm.bindings && typeof cfgForm.bindings === 'object' ? cfgForm.bindings : {}
-  if (!raw) {
-    return {
-      workflowApi: null,
+  const videoEngine = cfgForm.service_type === 'video'
+    ? (cfgForm.videoEngine || defaultVideoEngineForProvider(cfgForm.provider))
+    : undefined
+
+  if (showComfyWorkflowEditor.value) {
+    const raw = cfgForm.workflowApiStr.trim()
+    const bindings = cfgForm.bindings && typeof cfgForm.bindings === 'object' ? cfgForm.bindings : {}
+    const base = {
       bindings: Object.keys(bindings).length ? bindings : {},
+      ...(videoEngine ? { videoEngine } : {}),
+    }
+    if (!raw) {
+      return { workflowApi: null, ...base }
+    }
+    try {
+      return {
+        workflowApi: JSON.parse(raw),
+        ...base,
+      }
+    } catch {
+      throw new Error('ComfyUI Workflow API JSON 不是合法 JSON')
     }
   }
-  try {
-    return {
-      workflowApi: JSON.parse(raw),
-      bindings,
-    }
-  } catch {
-    throw new Error('ComfyUI Workflow API JSON 不是合法 JSON')
-  }
+
+  if (videoEngine) return { videoEngine }
+  return undefined
 }
 
 function onComfyParsed({ pinCount }) {
@@ -713,7 +766,18 @@ async function applyHuobaoQuickConfig() {
 function startAddCfg(t) {
   cfgEditId.value = null
   cfgTestResult.value = null
-  Object.assign(cfgForm, { name: '', provider: '', api_key: '', base_url: '', modelStr: '', service_type: t, priority: 0, workflowApiStr: '', bindings: {} })
+  Object.assign(cfgForm, {
+    name: '',
+    provider: '',
+    api_key: '',
+    base_url: '',
+    modelStr: '',
+    service_type: t,
+    priority: 0,
+    workflowApiStr: '',
+    bindings: {},
+    videoEngine: 'default',
+  })
   const firstPreset = presetsByType(t)[0]
   if (firstPreset) applyProviderPreset(t, firstPreset.provider)
   cfgDialog.value = true
@@ -721,6 +785,7 @@ function startAddCfg(t) {
 function startEditCfg(c) {
   cfgEditId.value = c.id
   cfgTestResult.value = null
+  const fromSettings = videoEngineFromSettings(c.settings)
   Object.assign(cfgForm, {
     name: c.name || '',
     provider: c.provider,
@@ -731,6 +796,7 @@ function startEditCfg(c) {
     priority: c.priority ?? 0,
     workflowApiStr: workflowApiFromSettings(c.settings),
     bindings: bindingsFromSettings(c.settings),
+    videoEngine: fromSettings || defaultVideoEngineForProvider(c.provider),
   })
   cfgDialog.value = true
   nextTick(() => {
@@ -899,12 +965,24 @@ const skillBelongsTo = (skillId, type) => {
   return skillId === dir || skillId.startsWith(dir + '/')
 }
 
+function isVideoEngineSkill(skillId) {
+  return String(skillId || '').startsWith('prompt-generator/video-engines/')
+}
+
 function agentSkillCount(type) {
   return allSkills.value.filter(s => skillBelongsTo(s.id, type)).length
 }
 
 const currentSkills = computed(() =>
-  allSkills.value.filter(s => skillBelongsTo(s.id, selectedAgent.value))
+  allSkills.value
+    .filter(s => skillBelongsTo(s.id, selectedAgent.value))
+    .slice()
+    .sort((a, b) => {
+      const ae = isVideoEngineSkill(a.id) ? 1 : 0
+      const be = isVideoEngineSkill(b.id) ? 1 : 0
+      if (ae !== be) return ae - be
+      return String(a.id).localeCompare(String(b.id))
+    }),
 )
 
 async function loadAllSkills() {
