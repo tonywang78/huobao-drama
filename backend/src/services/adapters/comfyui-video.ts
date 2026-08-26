@@ -14,26 +14,48 @@ import {
   buildComfyHistoryRequest,
   buildComfyPromptRequest,
   cancelComfyRemoteTask,
+  hasFirstLastFrameInjection,
   isEmptyComfyHistory,
   isComfyPromptQueued,
   parseComfyHistory,
   parseComfyPromptResponse,
   parseUrlList,
+  uploadReferenceImages,
 } from './comfyui-common'
 
 export class ComfyUIVideoAdapter implements VideoProviderAdapter {
   provider = 'comfyui'
 
   async buildGenerateRequest(config: AIConfig, record: VideoGenerationRecord): Promise<ProviderRequest> {
-    const refs = [
-      ...parseUrlList(record.referenceImageUrls),
-      ...(record.firstFrameUrl ? [record.firstFrameUrl] : []),
-      ...(record.imageUrl ? [record.imageUrl] : []),
-      ...(record.lastFrameUrl ? [record.lastFrameUrl] : []),
-    ].filter(Boolean)
+    const isFirstLast = record.referenceMode === 'first_last' || config.serviceType === 'first_last'
+    if (isFirstLast) {
+      if (!hasFirstLastFrameInjection(config)) {
+        throw new Error('请在设置中为该 ComfyUI 首尾帧配置绑定首帧和尾帧节点')
+      }
+      const firstFrame = (record.firstFrameUrl || record.imageUrl || '').trim()
+      const lastFrame = (record.lastFrameUrl || '').trim()
+      if (!firstFrame || !lastFrame) {
+        throw new Error('首尾帧模式必须同时提供 first_frame_url 和 last_frame_url')
+      }
+      const [firstName] = await uploadReferenceImages(config, [firstFrame])
+      const [lastName] = await uploadReferenceImages(config, [lastFrame])
+      return buildComfyPromptRequest(
+        config,
+        'first_last',
+        {
+          prompt: record.prompt,
+          negativePrompt: '',
+          seed: Math.floor(Math.random() * 2 ** 32),
+          duration: record.duration,
+          aspectRatio: record.aspectRatio,
+          firstFrame: firstName,
+          lastFrame: lastName,
+        },
+        [],
+      )
+    }
 
-    // 去重保序
-    const uniqueRefs = [...new Set(refs.map((u) => u.trim()).filter(Boolean))]
+    const uniqueRefs = [...new Set(parseUrlList(record.referenceImageUrls).map((u) => u.trim()).filter(Boolean))]
 
     return buildComfyPromptRequest(
       config,

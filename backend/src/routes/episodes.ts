@@ -27,6 +27,7 @@ app.post('/', async (c) => {
   const imageConfigId = body.image_config_id ?? await getActiveConfigId('image')
   const videoConfigId = body.video_config_id ?? await getActiveConfigId('video')
   const img2imgConfigId = body.img2img_config_id ?? await getActiveConfigId('img2img')
+  const firstLastConfigId = body.first_last_config_id ?? await getActiveConfigId('first_last')
   if (!imageConfigId) return badRequest(c, '未找到启用的图片生成配置，请先在设置中心添加')
   if (!videoConfigId) return badRequest(c, '未找到启用的视频生成配置，请先在设置中心添加')
   const ts = now()
@@ -44,6 +45,7 @@ app.post('/', async (c) => {
     imageConfigId,
     videoConfigId,
     img2imgConfigId,
+    firstLastConfigId,
     // 视频分辨率在创建集时固定（480p/720p），后续可通过 PUT 修改
     resolution: body.resolution === '480p' ? '480p' : '720p',
     createdAt: ts,
@@ -59,6 +61,7 @@ app.post('/', async (c) => {
     image_config_id: ep.imageConfigId,
     video_config_id: ep.videoConfigId,
     img2img_config_id: ep.img2imgConfigId,
+    first_last_config_id: ep.firstLastConfigId,
     resolution: ep.resolution,
   })
 })

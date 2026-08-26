@@ -332,7 +332,7 @@
           <label class="field"><span class="field-label">API Key</span><input v-model="cfgForm.api_key" class="input" type="password" :placeholder="cfgForm.provider === 'comfyui' ? '可选，反向代理鉴权时填写' : 'sk-...'" /></label>
           <label class="field"><span class="field-label">Base URL</span><input v-model="cfgForm.base_url" class="input" placeholder="https://..." /></label>
           <label class="field"><span class="field-label">模型（逗号分隔）</span><input v-model="cfgForm.modelStr" class="input" placeholder="model-name" /></label>
-          <label v-if="cfgForm.service_type === 'video'" class="field">
+          <label v-if="cfgForm.service_type === 'video' || cfgForm.service_type === 'first_last'" class="field">
             <span class="field-label">视频引擎</span>
             <BaseSelect
               v-model="cfgForm.videoEngine"
@@ -517,7 +517,7 @@ const cfgTestResult = ref(null)
 const huobaoApiKey = ref('')
 const huobaoSaving = ref(false)
 const cfgForm = reactive({ name: '', provider: '', api_key: '', base_url: '', modelStr: '', service_type: 'text', priority: 0, workflowApiStr: '', bindings: {}, videoEngine: 'default' })
-const serviceTypes = [{ type: 'text', label: '文本' }, { type: 'image', label: '图片' }, { type: 'img2img', label: '图生图' }, { type: 'video', label: '视频' }]
+const serviceTypes = [{ type: 'text', label: '文本' }, { type: 'image', label: '图片' }, { type: 'img2img', label: '图生图' }, { type: 'video', label: '视频' }, { type: 'first_last', label: '首尾帧' }]
 const providers = ['gemini', 'openai', 'volcengine', 'minimax', 'comfyui']
 const providerSelectOptions = computed(() => providers.map(p => ({ label: p, value: p })))
 const VIDEO_ENGINES = [
@@ -542,6 +542,7 @@ const serviceMeta = {
   image: { label: '图片', desc: '角色图、场景图与镜头图等静态图像生成' },
   img2img: { label: '图生图', desc: '基于参考图与修改提示词编辑场景图（保留构图改细节）' },
   video: { label: '视频', desc: '镜头视频直出生成，默认 Seedance 2.0' },
+  first_last: { label: '首尾帧', desc: '用分镜首帧图与尾帧图生成视频（MiniMax / ComfyUI）' },
 }
 const providerPresets = {
   text: {
@@ -562,6 +563,10 @@ const providerPresets = {
     minimax: { label: 'MiniMax H3 官方', baseUrl: 'https://api.minimaxi.com', models: ['MiniMax-H3'] },
     comfyui: { label: 'ComfyUI 本地', baseUrl: 'http://127.0.0.1:8188', models: ['comfyui-default'] },
   },
+  first_last: {
+    minimax: { label: 'MiniMax H3 官方', baseUrl: 'https://api.minimaxi.com', models: ['MiniMax-H3'] },
+    comfyui: { label: 'ComfyUI 本地', baseUrl: 'http://127.0.0.1:8188', models: ['comfyui-first-last-default'] },
+  },
 }
 const huobaoQuickConfigs = [
   { service_type: 'text', provider: 'gemini', name: '火宝文本服务 · Gemini', base_url: 'https://api.chatfire.site', model: ['gemini-3.1-pro-preview', 'gemini-3.5-flash', 'gemini-3-flash-preview'], priority: 100 },
@@ -571,6 +576,7 @@ const huobaoQuickConfigs = [
   { service_type: 'img2img', provider: 'gemini', name: '火宝图生图服务 · Gemini', base_url: 'https://api.chatfire.site', model: ['gemini-3-pro-image', 'gemini-3.1-flash-image'], priority: 95 },
   { service_type: 'video', provider: 'volcengine', name: '火宝视频服务 · Seedance', base_url: 'https://api.chatfire.site/volcengine', model: ['doubao-seedance-2-0-fast-260128', 'doubao-seedance-2-0-260128', 'doubao-seedance-2-0-mini-260615'], priority: 98, settings: { videoEngine: 'seedance' } },
   { service_type: 'video', provider: 'minimax', name: '火宝视频服务 · MiniMax', base_url: 'https://api.chatfire.site/minimax', model: ['MiniMax-H3'], priority: 96, settings: { videoEngine: 'minimax-h3' } },
+  { service_type: 'first_last', provider: 'minimax', name: '火宝首尾帧服务 · MiniMax', base_url: 'https://api.chatfire.site/minimax', model: ['MiniMax-H3'], priority: 94, settings: { videoEngine: 'minimax-h3' } },
 ]
 
 function byType(t) { return cfgs.value.filter(c => c.service_type === t) }
@@ -591,13 +597,13 @@ function applyProviderPreset(type, provider) {
     cfgForm.workflowApiStr = ''
     cfgForm.bindings = {}
   }
-  if (type === 'video') {
+  if (type === 'video' || type === 'first_last') {
     cfgForm.videoEngine = defaultVideoEngineForProvider(provider)
   }
 }
 
 const showComfyWorkflowEditor = computed(() =>
-  cfgForm.provider === 'comfyui' && (cfgForm.service_type === 'image' || cfgForm.service_type === 'video' || cfgForm.service_type === 'img2img'),
+  cfgForm.provider === 'comfyui' && (cfgForm.service_type === 'image' || cfgForm.service_type === 'video' || cfgForm.service_type === 'img2img' || cfgForm.service_type === 'first_last'),
 )
 const comfyWorkflowLoading = ref(false)
 const comfyBindingsRef = ref(null)
@@ -624,7 +630,7 @@ function bindingsFromSettings(settings) {
 }
 
 function buildSettingsPayload() {
-  const videoEngine = cfgForm.service_type === 'video'
+  const videoEngine = (cfgForm.service_type === 'video' || cfgForm.service_type === 'first_last')
     ? (cfgForm.videoEngine || defaultVideoEngineForProvider(cfgForm.provider))
     : undefined
 

@@ -64,7 +64,7 @@ test('video resolution is fixed per episode, editable, and locked into video tas
   assert.match(tasks, /episodeResolution = ep\.resolution/)
   assert.match(tasks, /resolution: episodeResolution \|\| body\.resolution/)
   // 服务落入 params 并传给适配器
-  assert.match(service, /resolution: params\.resolution === '480p' \? '480p' : '720p'/)
+  assert.match(service, /resolution: \['480p', '720p', '1080p', '2K'\]\.includes\(params\.resolution/)
   assert.match(service, /resolution: params\.resolution,/)
 })
 
@@ -87,20 +87,13 @@ test('tasks route validates reference-mode requirements for video tasks', () => 
   assert.match(route, /generateImage\(\{/)
   assert.match(route, /generateVideo\(\{/)
 
-  // 其他模式的校验已清理
-  assert.doesNotMatch(route, /文生视频模式必须提供 prompt/)
-  assert.doesNotMatch(route, /首帧模式必须提供 first_frame_url/)
-  assert.doesNotMatch(route, /首尾帧模式必须同时提供/)
-  assert.doesNotMatch(route, /body\.first_frame_url/)
-  assert.doesNotMatch(route, /body\.last_frame_url/)
-
-  // 多模态参考校验并固定 reference 模式
+  // 多模态参考校验；首尾帧为独立分支
   assert.match(route, /参考素材超限：图片≤9、视频≤3、音频≤3/)
   assert.match(route, /参考音频需要至少 1 个参考图片或视频/)
   assert.match(route, /多模态参考模式需要至少一个参考素材或 prompt/)
-  assert.match(route, /referenceMode: 'reference'/)
-  assert.match(route, /referenceVideoUrls: body\.reference_video_urls/)
-  assert.match(route, /referenceAudioUrls: body\.reference_audio_urls/)
+  assert.match(route, /referenceMode: isFirstLast \? 'first_last' : 'reference'/)
+  assert.match(route, /referenceVideoUrls: isFirstLast \? undefined : body\.reference_video_urls/)
+  assert.match(route, /referenceAudioUrls: isFirstLast \? undefined : body\.reference_audio_urls/)
   assert.match(route, /generateAudio: body\.generate_audio/)
 })
 
@@ -123,13 +116,13 @@ test('image/video generation tasks are unified into a single sys_task table', ()
   assert.doesNotMatch(mysqlSchema, /CREATE TABLE IF NOT EXISTS video_generations/)
   assert.doesNotMatch(mysqlSchema, /column: 'reference_video_urls'/)
 
-  // DDL 与旧表清理（不迁移历史）
+  // DDL：旧表已从 schema 移除，仅保留 sys_task
   assert.match(mysqlSchema, /CREATE TABLE IF NOT EXISTS sys_task \(/)
   assert.match(mysqlSchema, /type VARCHAR\(16\) NOT NULL/)
   assert.match(mysqlSchema, /params TEXT/)
   assert.match(mysqlSchema, /result_url TEXT/)
-  assert.match(mysqlSchema, /DROP TABLE IF EXISTS `image_generations`/)
-  assert.match(mysqlSchema, /DROP TABLE IF EXISTS `video_generations`/)
+  assert.doesNotMatch(mysqlSchema, /DROP TABLE IF EXISTS `image_generations`/)
+  assert.doesNotMatch(mysqlSchema, /DROP TABLE IF EXISTS `video_generations`/)
 
   // 路由与服务只操作 sys_task（统一 /tasks 入口，type 过滤）
   const tasksRoute = read('src/routes/tasks.ts')

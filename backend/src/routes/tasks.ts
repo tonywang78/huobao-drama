@@ -14,9 +14,16 @@ app.post('/', async (c) => {
   const body = await c.req.json()
   const type = body.type as TaskType
   if (type !== 'image' && type !== 'video') return badRequest(c, 'type 必须为 image 或 video')
+  const isFirstLast = type === 'video' && body.reference_mode === 'first_last'
 
   if (type === 'image') {
     if (!body.prompt) return badRequest(c, 'prompt is required')
+  } else if (isFirstLast) {
+    const firstFrame = String(body.first_frame_url || '').trim()
+    const lastFrame = String(body.last_frame_url || '').trim()
+    if (!firstFrame || !lastFrame) {
+      return badRequest(c, '首尾帧模式必须同时提供 first_frame_url 和 last_frame_url')
+    }
   } else {
     // 视频生成只保留多模态参考：校验素材上限与必填项
     const imgs = body.reference_image_urls?.length || 0
@@ -41,7 +48,11 @@ app.post('/', async (c) => {
       const [sb] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, Number(body.storyboard_id)))
       if (sb) {
         const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, sb.episodeId))
-        const locked = type === 'image' ? ep?.imageConfigId : ep?.videoConfigId
+        const locked = type === 'image'
+          ? ep?.imageConfigId
+          : isFirstLast
+            ? ep?.firstLastConfigId
+            : ep?.videoConfigId
         if (locked != null) configId = locked
         if (type === 'video' && ep?.resolution) episodeResolution = ep.resolution
       }
@@ -74,10 +85,12 @@ app.post('/', async (c) => {
         dramaId: body.drama_id,
         prompt: body.prompt,
         model: body.model,
-        referenceMode: 'reference',
-        referenceImageUrls: body.reference_image_urls,
-        referenceVideoUrls: body.reference_video_urls,
-        referenceAudioUrls: body.reference_audio_urls,
+        referenceMode: isFirstLast ? 'first_last' : 'reference',
+        firstFrameUrl: isFirstLast ? body.first_frame_url : undefined,
+        lastFrameUrl: isFirstLast ? body.last_frame_url : undefined,
+        referenceImageUrls: isFirstLast ? undefined : body.reference_image_urls,
+        referenceVideoUrls: isFirstLast ? undefined : body.reference_video_urls,
+        referenceAudioUrls: isFirstLast ? undefined : body.reference_audio_urls,
         generateAudio: body.generate_audio,
         duration: body.duration,
         aspectRatio: body.aspect_ratio,

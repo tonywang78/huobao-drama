@@ -34,6 +34,7 @@ export const mysqlSchemaStatements = [
     image_config_id INT,
     video_config_id INT,
     img2img_config_id INT,
+    first_last_config_id INT,
     resolution VARCHAR(16) DEFAULT '720p',
     created_at VARCHAR(64) NOT NULL,
     updated_at VARCHAR(64) NOT NULL,
@@ -312,6 +313,7 @@ export const mysqlDataSeedStatements = stylePresetSeeds.map((s) => ({
 /** 已有库增量补丁：CREATE TABLE IF NOT EXISTS 不会给旧表加列 */
 export const mysqlSchemaPatches = [
   'ALTER TABLE `episodes` ADD COLUMN `img2img_config_id` INT NULL AFTER `video_config_id`',
+  'ALTER TABLE `episodes` ADD COLUMN `first_last_config_id` INT NULL AFTER `img2img_config_id`',
 ]
 
 async function applySchemaPatches(pool: Pool) {

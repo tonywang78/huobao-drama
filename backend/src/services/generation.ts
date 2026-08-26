@@ -151,11 +151,20 @@ export async function generateImageEdit(params: GenerateImageEditParams): Promis
 }
 
 export async function generateVideo(params: GenerateVideoParams): Promise<number> {
+  const isFirstLast = params.referenceMode === 'first_last'
+  const serviceType: ServiceType = isFirstLast ? 'first_last' : 'video'
   // 指定配置（集锁定）可能已停用/删除/厂商收敛，失效时回退到当前启用配置
   const config = params.configId
-    ? (await getConfigById(params.configId)) ?? await getActiveConfig('video')
-    : await getActiveConfig('video')
-  if (!config) throw new Error('未配置视频模型，请先到「设置」页添加并启用 AI 服务')
+    ? (await getConfigById(params.configId)) ?? await getActiveConfig(serviceType)
+    : await getActiveConfig(serviceType)
+  if (!config) {
+    throw new Error(isFirstLast
+      ? '请先在设置中添加首尾帧服务'
+      : '未配置视频模型，请先到「设置」页添加并启用 AI 服务')
+  }
+  if (isFirstLast && !isOfficialProvider('first_last', config.provider)) {
+    throw new Error('当前视频服务不支持首尾帧')
+  }
 
   const id = await createTask('video', config, {
     storyboardId: params.storyboardId,
@@ -163,6 +172,7 @@ export async function generateVideo(params: GenerateVideoParams): Promise<number
     prompt: params.prompt,
     model: params.model || config.model,
   }, {
+    serviceType,
     referenceMode: params.referenceMode || 'reference',
     imageUrl: params.imageUrl,
     firstFrameUrl: params.firstFrameUrl,
@@ -212,17 +222,21 @@ async function resolveConfigForCancel(record: SysTaskRecord): Promise<AIConfig |
   const params = parseTaskParams(record.params)
   const configServiceType: ServiceType = params.serviceType === 'img2img'
     ? 'img2img'
-    : (record.type as ServiceType) === 'video'
-      ? 'video'
-      : 'image'
+    : params.serviceType === 'first_last' || params.referenceMode === 'first_last'
+      ? 'first_last'
+      : (record.type as ServiceType) === 'video'
+        ? 'video'
+        : 'image'
 
   const lockedConfigForEpisode = (ep: typeof schema.episodes.$inferSelect | undefined) => {
     if (!ep) return null
-    const lockedId = configServiceType === 'video'
-      ? ep.videoConfigId
-      : configServiceType === 'img2img'
-        ? ep.img2imgConfigId
-        : ep.imageConfigId
+    const lockedId = configServiceType === 'first_last'
+      ? ep.firstLastConfigId
+      : configServiceType === 'video'
+        ? ep.videoConfigId
+        : configServiceType === 'img2img'
+          ? ep.img2imgConfigId
+          : ep.imageConfigId
     return lockedId
   }
 

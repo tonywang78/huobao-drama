@@ -20,7 +20,10 @@
     <template v-else>
       <!-- 输入绑定 -->
       <div class="comfy-bindings-section-label">输入（Inputs）</div>
-      <p v-if="refImageSlotCount === 0" class="field-hint comfy-bindings-ref-hint">
+      <p v-if="serviceType === 'first_last'" class="field-hint comfy-bindings-ref-hint">
+        首尾帧分别注入 <code>first_frame</code> / <code>last_frame</code>（或占位符 <code>{{ firstFramePlaceholderExample }}</code> / <code>{{ lastFramePlaceholderExample }}</code>）。请绑到两个 <code>LoadImage.image</code>，并确保它们已接到图生视频节点。
+      </p>
+      <p v-else-if="refImageSlotCount === 0" class="field-hint comfy-bindings-ref-hint">
         未检测到 <code>LoadImage</code>（或 <code>{{ imagePlaceholderExample }}</code>）：参考图数组将无法注入。请在 workflow 中加入 LoadImage 后重新解析。
       </p>
       <p v-else-if="serviceType === 'video'" class="field-hint comfy-bindings-ref-hint">
@@ -135,6 +138,8 @@ const parseError = ref('')
 const localBindings = reactive({})
 const placeholderExample = '{{PROMPT}}'
 const imagePlaceholderExample = '{{IMAGE_N}}'
+const firstFramePlaceholderExample = '{{FIRST_FRAME}}'
+const lastFramePlaceholderExample = '{{LAST_FRAME}}'
 /** 最近一次解析的 API 节点图，供自动猜测判断「是否被其它节点引用」 */
 const lastWorkflow = ref(null)
 
@@ -210,13 +215,22 @@ function pruneOrphanImageBindings() {
 }
 
 const sources = computed(() => {
-  const isVideo = props.serviceType === 'video'
+  const isVideo = props.serviceType === 'video' || props.serviceType === 'first_last'
+  const isFirstLast = props.serviceType === 'first_last'
   const core = CORE_SOURCES.filter((s) => {
     if (!isVideo && (s.key === 'duration' || s.key === 'aspectRatio')) return false
     return true
   })
   const beforeVideo = core.filter((s) => s.key !== 'duration' && s.key !== 'aspectRatio')
   const video = core.filter((s) => s.key === 'duration' || s.key === 'aspectRatio')
+  if (isFirstLast) {
+    return [
+      ...beforeVideo,
+      { key: 'first_frame', label: '首帧', group: 'Frames' },
+      { key: 'last_frame', label: '尾帧', group: 'Frames' },
+      ...video,
+    ]
+  }
   const images = []
   for (let i = 1; i <= refImageSlotCount.value; i++) {
     images.push({
@@ -228,7 +242,9 @@ const sources = computed(() => {
   return [...beforeVideo, ...images, ...video]
 })
 
-const outputSourceLabel = computed(() => (props.serviceType === 'video' ? 'Primary Video / Media' : 'Primary Image'))
+const outputSourceLabel = computed(() => (
+  props.serviceType === 'video' || props.serviceType === 'first_last' ? 'Primary Video / Media' : 'Primary Image'
+))
 
 const canParse = computed(() => !!(props.workflowJson || '').trim())
 const hasParsedGraph = computed(() => pins.value.length > 0 || outputPins.value.length > 0)
@@ -426,8 +442,10 @@ function autoGuess() {
     if (s === '{{SEED}}') next.seed = { nodeId: p.nodeId, input: p.input }
     if (s === '{{DURATION}}') next.duration = { nodeId: p.nodeId, input: p.input }
     if (s === '{{ASPECT_RATIO}}') next.aspectRatio = { nodeId: p.nodeId, input: p.input }
+    if (s === '{{FIRST_FRAME}}' || s.includes('{{FIRST_FRAME}}')) next.first_frame = { nodeId: p.nodeId, input: p.input }
+    if (s === '{{LAST_FRAME}}' || s.includes('{{LAST_FRAME}}')) next.last_frame = { nodeId: p.nodeId, input: p.input }
     const img = s.match(/\{\{IMAGE_(\d+)\}\}/)
-    if (img) next[`image_${img[1]}`] = { nodeId: p.nodeId, input: p.input }
+    if (img && props.serviceType !== 'first_last') next[`image_${img[1]}`] = { nodeId: p.nodeId, input: p.input }
   }
 
   const clipTexts = pins.value.filter((p) => /CLIPTextEncode/i.test(p.classType) && p.input === 'text')
@@ -452,15 +470,23 @@ function autoGuess() {
   }
 
   const loadImages = rankedLoadImagePins()
-  loadImages.slice(0, MAX_REF_IMAGES).forEach((p, i) => {
-    const key = `image_${i + 1}`
-    if (!next[key]) next[key] = { nodeId: p.nodeId, input: p.input }
-  })
-  // 去掉超出当前槽位的旧 image_*（autoGuess 重建 next 时也清掉）
-  for (const k of Object.keys(next)) {
-    const m = /^image_(\d+)$/.exec(k)
-    if (m && Number(m[1]) > Math.min(MAX_REF_IMAGES, Math.max(loadImageNodeCount(), maxPlaceholderImageIndex()))) {
-      delete next[k]
+  if (props.serviceType === 'first_last') {
+    if (!next.first_frame && loadImages[0]) next.first_frame = { nodeId: loadImages[0].nodeId, input: loadImages[0].input }
+    if (!next.last_frame && loadImages[1]) next.last_frame = { nodeId: loadImages[1].nodeId, input: loadImages[1].input }
+    for (const k of Object.keys(next)) {
+      if (/^image_\d+$/.test(k)) delete next[k]
+    }
+  } else {
+    loadImages.slice(0, MAX_REF_IMAGES).forEach((p, i) => {
+      const key = `image_${i + 1}`
+      if (!next[key]) next[key] = { nodeId: p.nodeId, input: p.input }
+    })
+    // 去掉超出当前槽位的旧 image_*（autoGuess 重建 next 时也清掉）
+    for (const k of Object.keys(next)) {
+      const m = /^image_(\d+)$/.exec(k)
+      if (m && Number(m[1]) > Math.min(MAX_REF_IMAGES, Math.max(loadImageNodeCount(), maxPlaceholderImageIndex()))) {
+        delete next[k]
+      }
     }
   }
 
@@ -475,7 +501,7 @@ function autoGuess() {
 
   // 输出：优先 SaveVideo / SaveImage / CreateVideo
   if (!next.output && outputPins.value.length) {
-    const preferVideo = props.serviceType === 'video'
+    const preferVideo = props.serviceType === 'video' || props.serviceType === 'first_last'
     const preferred = outputPins.value.find((p) => {
       if (preferVideo) {
         return /SaveVideo|CreateVideo|VHS_|VideoCombine/i.test(p.classType) && (p.field === 'videos' || p.field === 'gifs' || p.field === 'auto')

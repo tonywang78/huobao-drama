@@ -32,6 +32,21 @@
 
 `bindings.output` 指定 history 结果取自哪个节点、哪个通道（`images` / `gifs` / `videos` / `auto`）。未配置时仍自动取首个媒体。
 
+**首尾帧服务**（`service_type: first_last`）使用独立绑定源，**不要**把两帧塞进 `image_1…N`：
+
+```json
+{
+  "bindings": {
+    "prompt": { "nodeId": "7", "input": "prompt" },
+    "first_frame": { "nodeId": "17", "input": "image" },
+    "last_frame": { "nodeId": "18", "input": "image" },
+    "output": { "nodeId": "16", "input": "auto" }
+  }
+}
+```
+
+运行时两帧分别上传后写入对应 LoadImage。请把这两个 LoadImage 接到图生视频节点；代码不写死具体节点字段名。
+
 ## 占位符（兼容兜底）
 
 在 API JSON 的节点 `inputs` 中使用：
@@ -43,6 +58,7 @@
 | `{{WIDTH}}` / `{{HEIGHT}}` | 宽高 |
 | `{{SEED}}` | 随机种子 |
 | `{{IMAGE_1}}` … | 参考图上传后的文件名 |
+| `{{FIRST_FRAME}}` / `{{LAST_FRAME}}` | 首尾帧服务：两帧上传后的文件名 |
 | `{{DURATION}}` / `{{ASPECT_RATIO}}` | 视频参数 |
 
 ## 默认模型文件（MiniMax H3 / 3090 24GB）

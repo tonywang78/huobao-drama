@@ -14,7 +14,7 @@ import { joinProviderUrl } from './url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const WORKFLOW_DIR = join(__dirname, 'comfyui', 'workflows')
 
-export type ComfyWorkflowKind = 'image' | 'video' | 'img2img'
+export type ComfyWorkflowKind = 'image' | 'video' | 'img2img' | 'first_last'
 
 export interface ComfyPlaceholderValues {
   prompt?: string | null
@@ -25,6 +25,8 @@ export interface ComfyPlaceholderValues {
   images?: string[]
   duration?: number | null
   aspectRatio?: string | null
+  firstFrame?: string | null
+  lastFrame?: string | null
 }
 
 export interface ComfyBindingTarget {
@@ -46,6 +48,8 @@ const PLACEHOLDER_KEYS = [
   'SEED',
   'DURATION',
   'ASPECT_RATIO',
+  'FIRST_FRAME',
+  'LAST_FRAME',
 ] as const
 
 /**
@@ -88,6 +92,8 @@ function bindingValueMap(values: ComfyPlaceholderValues): Record<string, string 
     seed: values.seed ?? Math.floor(Math.random() * 2 ** 32),
     duration: values.duration ?? 5,
     aspectRatio: formatAspectRatioForComfy(values.aspectRatio ?? '16:9'),
+    first_frame: values.firstFrame ?? '',
+    last_frame: values.lastFrame ?? '',
   }
   const images = values.images || []
   images.forEach((name, i) => {
@@ -113,6 +119,7 @@ export function applyBindings(
     if (!target?.nodeId || !target?.input) continue
     const value = valueMap[key]
     if (value === undefined) continue
+    if ((key === 'first_frame' || key === 'last_frame') && value === '') continue
 
     const node = workflow[target.nodeId]
     if (!node || typeof node !== 'object' || Array.isArray(node)) continue
@@ -141,9 +148,11 @@ export function loadBuiltinWorkflowApi(kind: ComfyWorkflowKind): Record<string, 
   }
   const file = kind === 'video'
     ? 'video-default.api.json'
-    : kind === 'img2img'
-      ? 'img2img-default.api.json'
-      : 'image-default.api.json'
+    : kind === 'first_last'
+      ? 'first-last-default.api.json'
+      : kind === 'img2img'
+        ? 'img2img-default.api.json'
+        : 'image-default.api.json'
   const parsed = JSON.parse(readFileSync(join(WORKFLOW_DIR, file), 'utf8')) as Record<string, unknown>
   cachedDefaults[kind] = parsed
   return structuredClone(parsed)
@@ -156,6 +165,17 @@ export function resolveWorkflowApi(config: AIConfig, kind: ComfyWorkflowKind): R
     return structuredClone(custom)
   }
   return loadBuiltinWorkflowApi(kind)
+}
+
+/** 首尾帧是否能注入：已绑定 first_frame+last_frame，或 workflow 含对应占位符 */
+export function hasFirstLastFrameInjection(config: AIConfig): boolean {
+  const settings = parseComfySettings(config.settings ?? null)
+  const firstBound = !!(settings.bindings?.first_frame?.nodeId && settings.bindings?.first_frame?.input)
+  const lastBound = !!(settings.bindings?.last_frame?.nodeId && settings.bindings?.last_frame?.input)
+  if (firstBound && lastBound) return true
+  const workflow = resolveWorkflowApi(config, 'first_last')
+  const raw = JSON.stringify(workflow)
+  return raw.includes('{{FIRST_FRAME}}') && raw.includes('{{LAST_FRAME}}')
 }
 
 export function comfyAuthHeaders(config: AIConfig, withJson = false): Record<string, string> {
@@ -197,6 +217,8 @@ export function injectPlaceholders(
     SEED: values.seed ?? Math.floor(Math.random() * 2 ** 32),
     DURATION: values.duration ?? 5,
     ASPECT_RATIO: formatAspectRatioForComfy(values.aspectRatio ?? '16:9'),
+    FIRST_FRAME: values.firstFrame ?? '',
+    LAST_FRAME: values.lastFrame ?? '',
   }
   const images = values.images || []
   images.forEach((name, i) => {

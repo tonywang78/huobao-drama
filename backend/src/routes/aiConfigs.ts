@@ -135,11 +135,11 @@ app.get('/', async (c) => {
   return success(c, parsed)
 })
 
-// GET /ai-configs/comfyui-default-workflow?type=image|video  （须在 /:id 之前）
+// GET /ai-configs/comfyui-default-workflow?type=image|video|img2img|first_last  （须在 /:id 之前）
 app.get('/comfyui-default-workflow', async (c) => {
   const type = (c.req.query('type') || 'image').toLowerCase()
-  if (type !== 'image' && type !== 'video' && type !== 'img2img') {
-    return badRequest(c, 'type must be image, video or img2img')
+  if (type !== 'image' && type !== 'video' && type !== 'img2img' && type !== 'first_last') {
+    return badRequest(c, 'type must be image, video, img2img or first_last')
   }
   return success(c, {
     type,

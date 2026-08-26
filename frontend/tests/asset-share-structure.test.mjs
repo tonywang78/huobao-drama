@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readEpisodeWorkbenchSources } from './episode-workbench-sources.mjs'
 
 const root = new URL('..', import.meta.url)
 const read = (path) => readFileSync(new URL(path, root), 'utf8')
@@ -18,7 +19,7 @@ test('useApi exposes episode linkAssets and unlink helpers', () => {
 })
 
 test('episode workbench can pick from library and unlink instead of soft-delete', () => {
-  const page = read('app/views/drama/episode.vue')
+  const page = readEpisodeWorkbenchSources()
 
   assert.match(page, /从素材库选入/)
   assert.match(page, /openAssetPick\(/)

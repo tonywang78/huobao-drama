@@ -161,7 +161,7 @@ export const aiConfigAPI = {
   update: (id: number, d: any) => api.put(`/ai-configs/${id}`, d),
   del: (id: number) => api.del(`/ai-configs/${id}`),
   test: (d: any) => api.post('/ai-configs/test', d),
-  comfyuiDefaultWorkflow: (type: 'image' | 'video') => api.get(`/ai-configs/comfyui-default-workflow?type=${type}`),
+  comfyuiDefaultWorkflow: (type: 'image' | 'video' | 'img2img' | 'first_last') => api.get(`/ai-configs/comfyui-default-workflow?type=${type}`),
 }
 
 export const promptAPI = {
