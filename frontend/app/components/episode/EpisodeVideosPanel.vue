@@ -213,7 +213,7 @@ const wb = useEpisodeWorkbenchInject()
                 <div class="video-inspector-body">
                   <section class="video-inspector-section">
                     <div class="video-inspector-prompt-head">
-                      <span class="video-inspector-label video-inspector-label-hero">视频提示词</span>
+                      <span class="video-inspector-label video-inspector-label-hero">参考图提示词</span>
                       <button
                         type="button"
                         class="btn btn-sm"
@@ -227,11 +227,12 @@ const wb = useEpisodeWorkbenchInject()
                     <MentionTextarea
                       :model-value="wb.selectedSb.video_prompt || wb.selectedSb.videoPrompt || ''"
                       :options="wb.mentionOptions"
-                      :rows="9"
+                      :rows="6"
                       input-class="textarea video-inspector-prompt"
-                      placeholder="用 @角色名 / @场景名 / @道具名 引用参考素材，生成时自动映射为参考图片；再按时间段描述画面运动与镜头…"
+                      placeholder="用 @角色名 / @场景名 / @道具名 引用参考素材；按 3 秒一段换行描述画面运动与镜头…"
                       @commit="v => wb.updateField(wb.selectedSb, 'video_prompt', v)"
                     />
+                    <p class="video-inspector-hint">用于「参考图」出片；首尾帧出片使用下方独立提示词。</p>
                   </section>
 
                   <section class="video-inspector-section">
@@ -343,6 +344,17 @@ const wb = useEpisodeWorkbenchInject()
                           <img :src="wb.thumbOf(wb.frameSrc(wb.firstFrameOf(wb.selectedSb)))" alt="首帧" @error="wb.thumbFallback($event, wb.frameSrc(wb.firstFrameOf(wb.selectedSb)))" />
                         </button>
                         <div v-else class="sb-frame-empty">未配首帧</div>
+                        <label class="video-frame-prompt-field">
+                          <span class="video-frame-prompt-label">首帧提示词</span>
+                          <MentionTextarea
+                            :model-value="wb.selectedSb.first_frame_prompt || wb.selectedSb.firstFramePrompt || ''"
+                            :options="wb.mentionOptions"
+                            :rows="2"
+                            input-class="textarea video-frame-prompt-input"
+                            placeholder="留空则用分镜首镜头描述或图片提示词；可用 @角色名 等引用素材"
+                            @commit="v => wb.updateField(wb.selectedSb, 'first_frame_prompt', v)"
+                          />
+                        </label>
                       </div>
                       <div class="sb-frame-slot">
                         <div class="sb-frame-slot-head">
@@ -365,7 +377,37 @@ const wb = useEpisodeWorkbenchInject()
                           <img :src="wb.thumbOf(wb.frameSrc(wb.lastFrameOf(wb.selectedSb)))" alt="尾帧" @error="wb.thumbFallback($event, wb.frameSrc(wb.lastFrameOf(wb.selectedSb)))" />
                         </button>
                         <div v-else class="sb-frame-empty">未配尾帧</div>
+                        <label class="video-frame-prompt-field">
+                          <span class="video-frame-prompt-label">尾帧提示词</span>
+                          <MentionTextarea
+                            :model-value="wb.selectedSb.last_frame_prompt || wb.selectedSb.lastFramePrompt || ''"
+                            :options="wb.mentionOptions"
+                            :rows="2"
+                            input-class="textarea video-frame-prompt-input"
+                            placeholder="留空则用分镜末镜头描述或图片提示词；可用 @角色名 等引用素材"
+                            @commit="v => wb.updateField(wb.selectedSb, 'last_frame_prompt', v)"
+                          />
+                        </label>
                       </div>
+                    </div>
+                    <div class="video-first-last-prompt">
+                      <span class="video-inspector-label">首尾帧视频提示词</span>
+                      <MentionTextarea
+                        :model-value="wb.selectedSb.first_last_prompt || wb.selectedSb.firstLastPrompt || ''"
+                        :options="wb.firstLastMentionOptions"
+                        :rows="5"
+                        input-class="textarea video-inspector-prompt"
+                        placeholder="描述从 @首帧 到 @尾帧 的运动与过渡；用 @角色名 / @场景名 / @道具名 引用额外参考图…"
+                        @commit="v => wb.updateField(wb.selectedSb, 'first_last_prompt', v)"
+                      />
+                    </div>
+                    <div class="video-first-last-ref-hint">
+                      <p class="video-inspector-hint video-inspector-hint-tight"><strong>引用方式</strong></p>
+                      <ul class="video-ref-hint-list">
+                        <li><code>@首帧</code> / <code>@尾帧</code> — 指向上方已配好的起止画面（生成时自动注入，无需 URL）</li>
+                        <li><code>@角色名</code> / <code>@场景名</code> / <code>@道具名</code> — 引用已绑定参考素材；提交时转为 <code>@图片N名字</code>（N 从 1 起，顺序：场景 → 角色 → 道具）</li>
+                        <li>首尾帧视频提示词留空时，回退为上方「参考图提示词」</li>
+                      </ul>
                     </div>
                     <button
                       type="button"

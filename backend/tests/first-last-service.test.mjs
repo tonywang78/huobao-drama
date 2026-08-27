@@ -25,7 +25,7 @@ test('tasks route first_last mode requires both frames and locks first_last conf
   assert.match(route, /firstFrameUrl: isFirstLast \? body\.first_frame_url/)
   assert.match(route, /lastFrameUrl: isFirstLast \? body\.last_frame_url/)
   assert.match(route, /ep\?\.firstLastConfigId/)
-  assert.match(route, /referenceImageUrls: isFirstLast \? undefined/)
+  assert.match(route, /referenceImageUrls: body\.reference_image_urls/)
 })
 
 test('video generation persists first_last serviceType and falls back to first_last config', () => {
@@ -43,6 +43,9 @@ test('storyboard PUT accepts first and last frame image fields', () => {
   const route = read('src/routes/storyboards.ts')
   assert.match(route, /first_frame_image: 'firstFrameImage'/)
   assert.match(route, /last_frame_image: 'lastFrameImage'/)
+  assert.match(route, /first_last_prompt: 'firstLastPrompt'/)
+  assert.match(route, /first_frame_prompt: 'firstFramePrompt'/)
+  assert.match(route, /last_frame_prompt: 'lastFramePrompt'/)
 })
 
 test('ComfyUI first_last path uses dedicated bindings and does not mix frames into reference images', () => {

@@ -24,6 +24,10 @@ app.post('/', async (c) => {
     if (!firstFrame || !lastFrame) {
       return badRequest(c, '首尾帧模式必须同时提供 first_frame_url 和 last_frame_url')
     }
+    const imgs = body.reference_image_urls?.length || 0
+    if (imgs > 9) {
+      return badRequest(c, '参考素材超限：图片≤9')
+    }
   } else {
     // 视频生成只保留多模态参考：校验素材上限与必填项
     const imgs = body.reference_image_urls?.length || 0
@@ -88,7 +92,7 @@ app.post('/', async (c) => {
         referenceMode: isFirstLast ? 'first_last' : 'reference',
         firstFrameUrl: isFirstLast ? body.first_frame_url : undefined,
         lastFrameUrl: isFirstLast ? body.last_frame_url : undefined,
-        referenceImageUrls: isFirstLast ? undefined : body.reference_image_urls,
+        referenceImageUrls: body.reference_image_urls,
         referenceVideoUrls: isFirstLast ? undefined : body.reference_video_urls,
         referenceAudioUrls: isFirstLast ? undefined : body.reference_audio_urls,
         generateAudio: body.generate_audio,

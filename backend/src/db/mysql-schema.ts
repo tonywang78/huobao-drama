@@ -94,6 +94,9 @@ export const mysqlSchemaStatements = [
     atmosphere TEXT,
     image_prompt TEXT,
     video_prompt TEXT,
+    first_last_prompt TEXT,
+    first_frame_prompt TEXT,
+    last_frame_prompt TEXT,
     bgm_prompt TEXT,
     sound_effect TEXT,
     description TEXT,
@@ -314,6 +317,9 @@ export const mysqlDataSeedStatements = stylePresetSeeds.map((s) => ({
 export const mysqlSchemaPatches = [
   'ALTER TABLE `episodes` ADD COLUMN `img2img_config_id` INT NULL AFTER `video_config_id`',
   'ALTER TABLE `episodes` ADD COLUMN `first_last_config_id` INT NULL AFTER `img2img_config_id`',
+  'ALTER TABLE `storyboards` ADD COLUMN `first_last_prompt` TEXT NULL AFTER `video_prompt`',
+  'ALTER TABLE `storyboards` ADD COLUMN `first_frame_prompt` TEXT NULL AFTER `first_last_prompt`',
+  'ALTER TABLE `storyboards` ADD COLUMN `last_frame_prompt` TEXT NULL AFTER `first_frame_prompt`',
 ]
 
 async function applySchemaPatches(pool: Pool) {

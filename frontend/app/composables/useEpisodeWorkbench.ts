@@ -1771,6 +1771,30 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     ]
   })
 
+  // 首尾帧视频提示词 @ 引用：在素材引用基础上追加 @首帧 / @尾帧
+  const firstLastMentionOptions = computed(() => {
+    const sb = selectedSb.value
+    if (!sb) return mentionOptions.value
+    const frameOpts = []
+    if (firstFrameOf(sb)) {
+      frameOpts.push({
+        label: '首帧',
+        value: '首帧',
+        group: '镜头帧',
+        image: thumbOf(frameSrc(firstFrameOf(sb))),
+      })
+    }
+    if (lastFrameOf(sb)) {
+      frameOpts.push({
+        label: '尾帧',
+        value: '尾帧',
+        group: '镜头帧',
+        image: thumbOf(frameSrc(lastFrameOf(sb))),
+      })
+    }
+    return [...frameOpts, ...mentionOptions.value]
+  })
+
   // 按参考图顺序（场景图在前、角色图居中、道具图在后）为 @名字 建立索引映射，供视频提示词引用替换
   function getShotReferenceIndexMap(sb) {
     const ordered = []
@@ -1796,10 +1820,16 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
   // 将视频提示词里的 @名字 替换为 @图片N名字（N 为参考图序号，1 起），生成时使用
   function resolveVideoPromptRefs(sb) {
     const prompt = sb.video_prompt || sb.videoPrompt || ''
-    const map = getShotReferenceIndexMap(sb)
+    return replaceAssetMentions(prompt, getShotReferenceIndexMap(sb))
+  }
+
+  const FIRST_LAST_FRAME_TOKENS = new Set(['首帧', '尾帧'])
+
+  function replaceAssetMentions(prompt, map) {
     const names = Object.keys(map).sort((a, b) => b.length - a.length)
     if (!names.length) return prompt
     return prompt.replace(/@([^\s@]+)/g, (m, raw) => {
+      if (FIRST_LAST_FRAME_TOKENS.has(raw)) return m
       for (const name of names) {
         if (raw.startsWith(name)) {
           return `@图片${map[name]}${name}${raw.slice(name.length)}`
@@ -1807,6 +1837,12 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
       }
       return m
     })
+  }
+
+  // 首尾帧视频提示词：优先 first_last_prompt，回退 video_prompt；保留 @首帧/@尾帧，素材 @ 转 @图片N
+  function resolveFirstLastPromptRefs(sb) {
+    const prompt = (sb.first_last_prompt || sb.firstLastPrompt || sb.video_prompt || sb.videoPrompt || '').trim()
+    return replaceAssetMentions(prompt, getShotReferenceIndexMap(sb))
   }
 
   // 切换选中分镜时重置视频生成面板
@@ -1909,10 +1945,14 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     if (matches.length) return (matches[matches.length - 1][1] || '').trim() || desc
     return desc
   }
-  function firstFramePrompt(sb) {
+  function effectiveFirstFramePrompt(sb) {
+    const stored = (sb?.first_frame_prompt || sb?.firstFramePrompt || '').trim()
+    if (stored) return stored
     return (sb?.image_prompt || sb?.imagePrompt || '').trim() || firstShotDescription(sb)
   }
-  function lastFramePrompt(sb) {
+  function effectiveLastFramePrompt(sb) {
+    const stored = (sb?.last_frame_prompt || sb?.lastFramePrompt || '').trim()
+    if (stored) return stored
     return lastShotDescription(sb) || (sb?.image_prompt || sb?.imagePrompt || '').trim()
   }
 
@@ -1953,7 +1993,7 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
 
   async function genStoryboardFrame(sb, frameType) {
     if (!sb?.id) return
-    const prompt = frameType === 'first_frame' ? firstFramePrompt(sb) : lastFramePrompt(sb)
+    const prompt = frameType === 'first_frame' ? effectiveFirstFramePrompt(sb) : effectiveLastFramePrompt(sb)
     if (!prompt) {
       toast.error('请先填写分镜描述或图片提示词')
       return
@@ -2031,11 +2071,12 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
         reference_mode: 'first_last',
         storyboard_id: sb.id,
         drama_id: dramaId,
-        prompt: resolveVideoPromptRefs(sb),
+        prompt: resolveFirstLastPromptRefs(sb),
         duration: Number(videoDuration.value || sb.duration || 10),
         aspect_ratio: dramaAspectRatio.value,
         first_frame_url: first,
         last_frame_url: last,
+        reference_image_urls: getShotReferenceImages(sb),
         config_id: firstLastConfigId(),
       })
       toast.success('首尾帧视频生成中')
@@ -2343,7 +2384,7 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     updateField, getStoryboardCharacters, getStoryboardCharacterIds, getStoryboardProps, getStoryboardPropIds,
     getSceneName, getStoryboardScene, toggleStoryboardCharacter, toggleStoryboardProp, totalDuration,
     firstFrameOf, lastFrameOf, frameSrc, framesReadyCount, isPendingFrame, isUploadingFrame,
-    genStoryboardFrame, uploadStoryboardFrame, clearStoryboardFrame, mentionOptions, refBindableAssets, toggleShotBind,
+    genStoryboardFrame, uploadStoryboardFrame, clearStoryboardFrame, mentionOptions, firstLastMentionOptions, refBindableAssets, toggleShotBind,
     videoTaskRows, videoTaskDoneCount, videoTaskFailedCount, videoTaskState, videoTaskStatusLabel, videoTaskActionLabel,
     isPendingVideo, videoFailMessage, cancellingVideoIds, cancellingAllVideos, cancelVid, cancelAllVids,
     genVid, genFirstLastVid, batchVideos, batchSelectedReferenceVideos, batchFirstLastVideos,
