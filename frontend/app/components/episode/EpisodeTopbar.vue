@@ -1,7 +1,8 @@
 <script setup>
-import { Loader2, Plus, X, ListTodo, Upload, Play, MapPin } from 'lucide-vue-next'
+import { Loader2, Plus, X, ListTodo, Upload, Play, MapPin, Sparkles } from 'lucide-vue-next'
 import ModelSelect from '~/components/ModelSelect.vue'
 const wb = useEpisodeWorkbenchInject()
+const assistant = useStudioAssistant()
 </script>
 
 <template>
@@ -60,6 +61,10 @@ const wb = useEpisodeWorkbenchInject()
             <ListTodo :size="12" />
             任务
             <span v-if="wb.genTaskActiveCount" class="task-drawer-badge">{{ wb.genTaskActiveCount }}</span>
+          </button>
+          <button class="btn" :class="{ 'is-on': assistant.open }" @click="assistant.toggle()">
+            <Sparkles :size="12" />
+            助手
           </button>
           <button class="btn btn-primary" @click="wb.panel = wb.mergeUrl ? 'export' : (wb.sbs.length ? 'production' : 'script')">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>

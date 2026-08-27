@@ -11,4 +11,5 @@ import { Toaster } from 'vue-sonner'
 
 <style>
 @import url('./assets/studio.css');
+@import url('./assets/assistant.css');
 </style>

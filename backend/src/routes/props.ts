@@ -25,6 +25,7 @@ app.post('/', async (c) => {
     type: body.type || '',
     description: body.description || '',
     dramaId: body.drama_id,
+    imageUrl: body.image_url || body.imageUrl || null,
     createdAt: ts,
     updatedAt: ts,
   })

@@ -880,6 +880,7 @@ const agentDefs = [
   { type: 'prompt_generator', label: '提示词', icon: '🖼' },
   { type: 'asset_importer', label: '资产导入', icon: '📥' },
   { type: 'storyboard_importer', label: '分镜导入', icon: '📋' },
+  { type: 'studio_assistant', label: '工作室助手', icon: '✨' },
 ]
 
 function getAgentCfg(type) {

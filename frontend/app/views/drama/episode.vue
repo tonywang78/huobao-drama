@@ -1,7 +1,7 @@
 <template>
   <div class="studio" v-if="wb.drama">
     <EpisodeTopbar />
-    <div class="studio-body">
+    <div class="studio-body" :class="{ 'has-assistant': assistantOpen }">
       <EpisodeSidebar />
       <main class="main">
         <EpisodeScriptPanel v-if="wb.panel === 'script'" />
@@ -47,6 +47,7 @@
           @cancel="wb.sbDelete.open = false"
         />
       </main>
+      <AssistantPanel variant="dock" />
     </div>
   </div>
 </template>
@@ -57,6 +58,9 @@ definePageMeta({ layout: 'studio' })
 const route = useRoute()
 const wb = useEpisodeWorkbench(Number(route.params.id), Number(route.params.episodeNumber))
 provideEpisodeWorkbench(wb)
+const assistantOpen = useState('assistant-open', () => {
+  try { return localStorage.getItem('huobao:assistant:open') === '1' } catch { return false }
+})
 </script>
 
 <style src="./episode.css"></style>

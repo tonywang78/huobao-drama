@@ -20,6 +20,7 @@ import agent from './routes/agent.js'
 import merge from './routes/merge.js'
 import skills from './routes/skills.js'
 import props from './routes/props.js'
+import assistant from './routes/assistant.js'
 import { requestLogger, errorHandler } from './middleware/logger.js'
 import { resumeActiveTasks } from './services/generation.js'
 
@@ -56,6 +57,7 @@ api.route('/agent', agent)
 api.route('/merge', merge)
 api.route('/skills', skills)
 api.route('/props', props)
+api.route('/assistant', assistant)
 
 app.route('/api/v1', api)
 

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
 import { db, schema } from '../db/index.js'
 import { success, created, badRequest, notFound } from '../utils/response.js'
+import { toSnakeCase } from '../utils/transform.js'
 import { cancelEpisodeTasks, cancelTask, generateImage, generateVideo } from '../services/generation.js'
 import { logTaskError, logTaskPayload, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
 
@@ -137,7 +138,8 @@ app.get('/:id', async (c) => {
   const id = Number(c.req.param('id'))
   const [row] = await db.select().from(schema.sysTask)
     .where(eq(schema.sysTask.id, id))
-  return success(c, row || null)
+  if (!row) return success(c, null)
+  return success(c, toSnakeCase(row))
 })
 
 // POST /tasks/:id/cancel — 取消进行中的任务

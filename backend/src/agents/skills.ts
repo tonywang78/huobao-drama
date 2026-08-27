@@ -37,6 +37,7 @@ const AGENT_SKILL_MAP: Record<string, string[]> = {
   ],
   asset_importer: ['asset-importer'],
   storyboard_importer: ['storyboard-importer'],
+  studio_assistant: ['studio-assistant'],
 }
 
 /** 视频引擎 skill 相对 workspace 的路径前缀（Skills UI / 按需加载共用） */

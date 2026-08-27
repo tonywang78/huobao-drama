@@ -29,7 +29,7 @@
               @mousedown.prevent="pick(opt)"
               @mousemove="highlightIdx = flatIndex(gi, oi)"
             >
-              <span :class="['mention-avatar', `mention-avatar-${opt.group === '场景' ? 'scene' : (opt.group === '道具' ? 'prop' : 'role')}`]">
+              <span :class="['mention-avatar', avatarClass(opt.group)]">
                 <img v-if="opt.image" :src="opt.image" alt="" @error="$event.target.style.display = 'none'" />
                 <component v-else :is="groupIcon(opt.group)" :size="12" :stroke-width="2" />
               </span>
@@ -46,10 +46,25 @@
 
 <script setup>
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
-import { User, MapPin, Package } from 'lucide-vue-next'
+import { User, MapPin, Package, Palette, Sparkles, Image } from 'lucide-vue-next'
 
-// 无图资产在下拉中显示分组图标兜底（场景=定位、道具=包裹、角色=人物）
-const groupIcon = (group) => (group === '场景' ? MapPin : group === '道具' ? Package : User)
+const groupIcon = (group) => {
+  if (group === '场景') return MapPin
+  if (group === '道具') return Package
+  if (group === '风格') return Palette
+  if (group === '项目') return Sparkles
+  if (group === '本次生成') return Image
+  return User
+}
+
+function avatarClass(group) {
+  if (group === '场景') return 'mention-avatar-scene'
+  if (group === '道具') return 'mention-avatar-prop'
+  if (group === '风格') return 'mention-avatar-style'
+  if (group === '项目') return 'mention-avatar-project'
+  if (group === '本次生成') return 'mention-avatar-generated'
+  return 'mention-avatar-role'
+}
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
@@ -81,9 +96,14 @@ watch(highlightIdx, () => {
 const DROPDOWN_WIDTH = 240
 const DROPDOWN_MAX_HEIGHT = 220
 
-// 下拉 Teleport 到 body 后用 fixed 定位，任何外层滚动/窗口变化都会使其错位 → 直接关闭
+// 下拉 Teleport 到 body 后用 fixed 定位，外层滚动/窗口变化会使其错位 → 关闭
+// 下拉自身滚动（含高亮项 scrollIntoView）不能关，否则刚弹出就被关掉
 function closeOnOuterScroll(e) {
-  if (mention.value.open && e?.target !== taEl.value) closeMention()
+  if (!mention.value.open) return
+  const t = e?.target
+  if (t === taEl.value) return
+  if (dropdownEl.value && (t === dropdownEl.value || dropdownEl.value.contains(t))) return
+  closeMention()
 }
 onMounted(() => {
   window.addEventListener('scroll', closeOnOuterScroll, true)
@@ -95,7 +115,9 @@ onBeforeUnmount(() => {
 })
 
 watch(() => props.modelValue, (v) => {
-  if (v !== text.value) text.value = v
+  // 自身 input 回写 v-model 时值相同，不能关下拉，否则输入 @ 后列表会被立刻关掉
+  if (v === text.value) return
+  text.value = v ?? ''
   mention.value.open = false
 })
 
@@ -192,19 +214,32 @@ function flatIndex(gi, oi) {
   return idx + oi
 }
 
+function viewportBox() {
+  const vv = window.visualViewport
+  if (vv) return { top: vv.offsetTop, height: vv.height, width: vv.width }
+  return { top: 0, height: window.innerHeight, width: window.innerWidth }
+}
+
 // 下拉为 fixed 定位（Teleport 到 body），坐标基于视口；下方空间不足时翻到光标上方
-const mentionStyle = computed(() => mention.value.above
-  ? { left: `${mention.value.left}px`, bottom: `${window.innerHeight - mention.value.top}px` }
-  : { left: `${mention.value.left}px`, top: `${mention.value.top}px` })
+const mentionStyle = computed(() => {
+  const s = mention.value
+  const maxHeight = `${s.maxHeight || DROPDOWN_MAX_HEIGHT}px`
+  return s.above
+    ? { left: `${s.left}px`, bottom: `${window.innerHeight - s.top}px`, maxHeight }
+    : { left: `${s.left}px`, top: `${s.top}px`, maxHeight }
+})
 
 // 镜像 div 测量 textarea 光标坐标
 function getCaretCoordinates(textarea, position) {
   const div = document.createElement('div')
   const style = getComputedStyle(textarea)
   const propsToCopy = [
-    'boxSizing', 'width', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+    'boxSizing', 'width',
+    'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
     'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
-    'fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'textIndent',
+    'fontFamily', 'fontSize', 'fontWeight', 'fontStyle',
+    'lineHeight', 'letterSpacing', 'textIndent', 'textAlign', 'wordSpacing',
+    'whiteSpace', 'wordWrap', 'overflowWrap', 'tabSize',
   ]
   div.style.position = 'absolute'
   div.style.visibility = 'hidden'
@@ -235,17 +270,29 @@ function updateMentionState() {
   const ta = taEl.value
   const caret = getCaretCoordinates(ta, ta.selectionStart)
   const rect = ta.getBoundingClientRect()
-  const maxLeft = Math.max(0, (wrapEl.value?.clientWidth || DROPDOWN_WIDTH) - DROPDOWN_WIDTH)
-  const belowTop = rect.top + caret.top + caret.lineHeight - ta.scrollTop + 4
-  // 下方放不下时下拉翻到光标上方（top 记为光标行的视口上沿）
-  const above = belowTop + DROPDOWN_MAX_HEIGHT > window.innerHeight - 8 && caret.top > DROPDOWN_MAX_HEIGHT
+  const vp = viewportBox()
+  const EDGE = 8
+  const GAP = 8
+  const caretTop = rect.top + caret.top - ta.scrollTop
+  const caretBottom = caretTop + caret.lineHeight
+  const spaceBelow = vp.top + vp.height - caretBottom - EDGE
+  const spaceAbove = caretTop - vp.top - EDGE
+  // 短输入框贴在屏幕底部时 caret.top 很小，不能用它判断能否上翻
+  const above = spaceBelow < DROPDOWN_MAX_HEIGHT && spaceAbove > spaceBelow
+  const avail = above ? spaceAbove : spaceBelow
+  const maxHeight = Math.max(96, Math.min(DROPDOWN_MAX_HEIGHT, avail - GAP))
+  // 水平跟 @ 对齐；上翻时贴在当前行上方，避免盖住正在输入的字
+  const atAt = getCaretCoordinates(ta, active.start)
+  const rawLeft = rect.left + atAt.left
+  const firstLine = (caretTop - rect.top) < caret.lineHeight * 1.2
   mention.value = {
     open: true,
     start: active.start,
     query: active.query,
-    top: above ? rect.top + caret.top - ta.scrollTop - 4 : belowTop,
-    left: rect.left + Math.min(caret.left, maxLeft),
+    top: above ? (firstLine ? rect.top - GAP : caretTop - GAP) : caretBottom + GAP,
+    left: Math.max(EDGE, Math.min(rawLeft, vp.width - DROPDOWN_WIDTH - EDGE)),
     above,
+    maxHeight,
   }
   highlightIdx.value = 0
 }
@@ -297,17 +344,21 @@ function onKeydown(e) {
   const total = flatList.value.length
   if (e.key === 'ArrowDown') {
     e.preventDefault()
+    e.stopPropagation()
     if (total) highlightIdx.value = (highlightIdx.value + 1) % total
   } else if (e.key === 'ArrowUp') {
     e.preventDefault()
+    e.stopPropagation()
     if (total) highlightIdx.value = (highlightIdx.value - 1 + total) % total
   } else if (e.key === 'Enter' || e.key === 'Tab') {
     if (total) {
       e.preventDefault()
+      e.stopPropagation()
       pick(flatList.value[highlightIdx.value] || flatList.value[0])
     }
   } else if (e.key === 'Escape') {
     e.preventDefault()
+    e.stopPropagation()
     closeMention()
   }
 }
@@ -327,6 +378,14 @@ function onBlur(e) {
   closeMention()
   emit('commit', e.target.value)
 }
+
+function getSelectedText() {
+  const ta = taEl.value
+  if (!ta || ta.selectionStart === ta.selectionEnd) return ''
+  return ta.value.slice(ta.selectionStart, ta.selectionEnd)
+}
+
+defineExpose({ getSelectedText })
 </script>
 
 <style scoped>
@@ -361,6 +420,7 @@ function onBlur(e) {
   flex: 1;
   min-height: 0;
   width: 100%;
+  margin: 0;
   resize: none;
   background: transparent;
   color: transparent;
@@ -369,10 +429,10 @@ function onBlur(e) {
 .mention-input::placeholder {
   color: var(--text-3);
 }
-/* @引用 着色：不改字距/内边距，保证与透明文本逐字对齐 */
+/* @引用 着色：不改字重/字距，保证与透明文本逐字对齐 */
 .mention-backdrop :deep(.mention-token) {
   border-radius: 4px;
-  font-weight: 600;
+  font-weight: inherit;
 }
 .mention-backdrop :deep(.mention-token-role) {
   color: var(--accent-text);
@@ -440,6 +500,9 @@ function onBlur(e) {
 .mention-avatar-role { color: var(--accent-text); background: var(--accent-bg); }
 .mention-avatar-scene { color: #248a3d; background: var(--success-bg); }
 .mention-avatar-prop { color: var(--text-2); background: var(--bg-2); }
+.mention-avatar-style { color: #7c3aed; background: rgba(124, 58, 237, 0.12); }
+.mention-avatar-project { color: var(--accent-text); background: var(--accent-bg); }
+.mention-avatar-generated { color: #0e7490; background: rgba(14, 116, 144, 0.12); }
 .mention-name {
   flex: 1;
   min-width: 0;

@@ -16,6 +16,7 @@ import { storyboardTools } from './tools/storyboard-tools.js'
 import { imagePromptTools } from './tools/image-prompt-tools.js'
 import { importTools } from './tools/import-tools.js'
 import { storyboardImportTools } from './tools/storyboard-import-tools.js'
+import { assistantTools } from './tools/assistant-tools.js'
 import { loadAgentSkills, skillWorkspaces } from './skills.js'
 import { loadAgentPromptFile } from './prompts.js'
 
@@ -155,6 +156,17 @@ export const DEFAULT_PROMPTS: Record<string, { name: string; instructions: strin
 5. 必须调用 submit_import_candidates 一次提交全部候选，不要写库、不要省略条目
 `,
   },
+  studio_assistant: {
+    name: '工作室助手',
+    instructions: `你是火宝短剧工作台的通用助手，待在用户右侧，根据当前工序上下文用中文协助生产。
+
+工作原则：
+1. 先看用户消息里的【当前上下文】，再决定是否调用工具
+2. 生图/改图/写提示词/创建资产可以直接调用对应工具
+3. 改写剧本、提取资产、整集拆分镜、批量视频提示词只能 propose_pipeline，等用户确认
+4. 没有打开剧或集时不要强行调用生产工具
+5. 回复简短可执行；不要把整份剧本贴回聊天`,
+  },
   storyboard_importer: {
     name: '分镜导入',
     instructions: `你是分镜/运镜设计导入助手，负责把用户上传的 Markdown/文本解析为镜头候选。
@@ -285,6 +297,7 @@ const AGENT_TOOLS: Record<string, Record<string, any>> = {
   },
   asset_importer: importTools,
   storyboard_importer: storyboardImportTools,
+  studio_assistant: assistantTools,
 }
 
 /** instructions 按请求解析：prompt 文件（或默认）+ 技能全文拼接 */

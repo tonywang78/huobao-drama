@@ -164,6 +164,14 @@
   min-height: 0;
   flex: 1;
 }
+.studio-body.has-assistant {
+  grid-template-columns: 208px minmax(0, 1fr) minmax(300px, 380px);
+}
+.studio-body.has-assistant > .assistant-panel {
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
 
 /* ===== Sidebar ===== */
 .sidebar {

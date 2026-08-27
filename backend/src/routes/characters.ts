@@ -26,6 +26,7 @@ app.post('/', async (c) => {
     appearance: body.appearance || '',
     styling: body.styling || '',
     dramaId: body.drama_id,
+    imageUrl: body.image_url || body.imageUrl || null,
     createdAt: ts,
     updatedAt: ts,
   })

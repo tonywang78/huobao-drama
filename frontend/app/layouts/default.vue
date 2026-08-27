@@ -24,6 +24,10 @@
           <Settings :size="15" :stroke-width="1.8" />
           <span>设置</span>
         </NuxtLink>
+        <button type="button" class="nav-link" :class="{ active: assistant.open }" @click="assistant.toggle()">
+          <Sparkles :size="15" :stroke-width="1.8" />
+          <span>助手</span>
+        </button>
       </nav>
     </header>
 
@@ -37,16 +41,18 @@
     <main class="content">
       <slot />
     </main>
+    <AssistantPanel variant="overlay" />
   </div>
 </template>
 
 <script setup>
-import { LayoutGrid, Settings, TriangleAlert } from 'lucide-vue-next'
+import { LayoutGrid, Settings, Sparkles, TriangleAlert } from 'lucide-vue-next'
 import { aiConfigAPI } from '~/composables/useApi'
 import brandLogo from '~/assets/huobao-logo.png'
 
 const route = useRoute()
 const showBrandImage = ref(true)
+const assistant = useStudioAssistant()
 
 const SERVICE_TYPE_LABELS = { text: '文本', image: '图片', video: '视频' }
 const missingConfigLabels = ref([])

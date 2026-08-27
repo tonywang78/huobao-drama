@@ -286,3 +286,30 @@ export const assets = mysqlTable('assets', {
   updatedAt: varchar('updated_at', { length: 64 }).notNull(),
   deletedAt: varchar('deleted_at', { length: 64 }),
 })
+
+export const assistantThreads = mysqlTable('assistant_threads', {
+  id: int('id').primaryKey().autoincrement(),
+  dramaId: int('drama_id'),
+  episodeId: int('episode_id'),
+  title: varchar('title', { length: 128 }),
+  createdAt: varchar('created_at', { length: 64 }).notNull(),
+  updatedAt: varchar('updated_at', { length: 64 }).notNull(),
+})
+
+export const assistantMessages = mysqlTable('assistant_messages', {
+  id: int('id').primaryKey().autoincrement(),
+  threadId: int('thread_id').notNull(),
+  role: varchar('role', { length: 16 }).notNull(),
+  content: text('content'),
+  createdAt: varchar('created_at', { length: 64 }).notNull(),
+})
+
+export const assistantSnippets = mysqlTable('assistant_snippets', {
+  id: int('id').primaryKey().autoincrement(),
+  dramaId: int('drama_id'),
+  title: varchar('title', { length: 128 }).notNull(),
+  body: text('body').notNull(),
+  sortOrder: int('sort_order').default(0),
+  createdAt: varchar('created_at', { length: 64 }).notNull(),
+  updatedAt: varchar('updated_at', { length: 64 }).notNull(),
+})

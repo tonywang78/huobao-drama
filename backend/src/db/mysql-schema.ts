@@ -286,6 +286,37 @@ export const mysqlSchemaStatements = [
     updated_at VARCHAR(64) NOT NULL,
     deleted_at VARCHAR(64)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+  `CREATE TABLE IF NOT EXISTS assistant_threads (
+    id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    drama_id INT,
+    episode_id INT,
+    title VARCHAR(128),
+    created_at VARCHAR(64) NOT NULL,
+    updated_at VARCHAR(64) NOT NULL,
+    INDEX idx_assistant_threads_episode (episode_id),
+    INDEX idx_assistant_threads_drama (drama_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+  `CREATE TABLE IF NOT EXISTS assistant_messages (
+    id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    thread_id INT NOT NULL,
+    role VARCHAR(16) NOT NULL,
+    content TEXT,
+    created_at VARCHAR(64) NOT NULL,
+    INDEX idx_assistant_messages_thread (thread_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+  `CREATE TABLE IF NOT EXISTS assistant_snippets (
+    id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    drama_id INT,
+    title VARCHAR(128) NOT NULL,
+    body TEXT NOT NULL,
+    sort_order INT DEFAULT 0,
+    created_at VARCHAR(64) NOT NULL,
+    updated_at VARCHAR(64) NOT NULL,
+    INDEX idx_assistant_snippets_drama (drama_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 ]
 
 /**

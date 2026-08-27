@@ -24,6 +24,7 @@ app.post('/', async (c) => {
     time: body.time || '',
     prompt: body.prompt || body.description || body.location,
     lighting: body.lighting || '',
+    imageUrl: body.image_url || body.imageUrl || null,
     createdAt: ts,
     updatedAt: ts,
   })

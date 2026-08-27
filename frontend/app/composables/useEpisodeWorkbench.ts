@@ -989,6 +989,32 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     return 'script'
   })
 
+  const assistantUiContext = computed(() => {
+    let stage = 'raw'
+    if (panel.value === 'export') stage = 'export'
+    else if (panel.value === 'production') {
+      if (prodTab.value === 'assets') stage = 'assets'
+      else if (prodTab.value === 'storyboard') stage = 'storyboard'
+      else stage = 'videos'
+    } else {
+      stage = scriptStep.value === 0 ? 'raw' : 'rewrite'
+    }
+    const detail = assetDetail.value
+    return {
+      route: 'episode',
+      drama_id: dramaId,
+      episode_id: epId.value || null,
+      episode_number: episodeNumber,
+      stage,
+      script_step: scriptStep.value,
+      prod_tab: prodTab.value,
+      selected_asset: detail?.open && detail.item?.id
+        ? { type: detail.type, id: detail.item.id }
+        : null,
+      selected_storyboard_id: selectedSb.value?.id || null,
+    }
+  })
+
   function mainStageDone(stageId) {
     if (stageId === 'script') return !!scriptContent.value
     if (stageId === 'assets') return assetTotalCount.value > 0 && assetReadyCount.value === assetTotalCount.value
@@ -2352,8 +2378,9 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
   return reactive({
     drama, episode, chars, scenes, propItems, sbs, mergeData, dramaId, episodeNumber,
     panel, scriptStep, prodTab, prodTabIdx, localRaw, localScript, rawContent, scriptContent, epId,
-    rawLen, scriptLen, mergeUrl, rn, rt, chatModel, imageModel, videoModel,
+    rawLen, scriptLen, mergeUrl, rn, rt,     chatModel, imageModel, videoModel,
     textModelOptions, imageModelOptions, videoModelOptions, textModelMultiCfg, imageModelMultiCfg, videoModelMultiCfg,
+    assistantUiContext,
     taskDrawer, genTaskActiveCount, genTaskRows, genTaskDoneCount, genTaskFailedCount,
     sidebarSections, sidebarJumpSteps, activeSubStepKey, sectionState, goSubStep,
     currentSubStageLabel, pipelineProgress, pipelineTotal, refresh, openTaskDrawer, closeTaskDrawer, loadGenTasks,

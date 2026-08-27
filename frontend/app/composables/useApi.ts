@@ -185,3 +185,24 @@ export const stylePresetAPI = {
   update: (id: number, d: any) => api.put(`/style-presets/${id}`, d),
   del: (id: number) => api.del(`/style-presets/${id}`),
 }
+
+export const assistantAPI = {
+  thread: (params: { drama_id?: number | null; episode_id?: number | null } = {}) => {
+    const q = new URLSearchParams()
+    if (params.drama_id) q.set('drama_id', String(params.drama_id))
+    if (params.episode_id) q.set('episode_id', String(params.episode_id))
+    return api.get<{ thread: any; messages: any[]; assets: any[]; snippets: any[] }>(`/assistant/thread${q.size ? `?${q}` : ''}`)
+  },
+  updateMessage: (id: number, data: { artifacts?: any[] }) => api.put(`/assistant/messages/${id}`, data),
+  confirm: (data: { thread_id: number; message_id: number; model?: string; config_id?: number }) =>
+    api.post('/assistant/confirm', data),
+  listSnippets: (drama_id?: number | null) => {
+    const q = drama_id ? `?drama_id=${drama_id}` : ''
+    return api.get<{ items: any[] }>(`/assistant/snippets${q}`)
+  },
+  createSnippet: (data: { title: string; body: string; drama_id?: number | null; sort_order?: number }) =>
+    api.post('/assistant/snippets', data),
+  updateSnippet: (id: number, data: { title?: string; body?: string; drama_id?: number | null; sort_order?: number }) =>
+    api.put(`/assistant/snippets/${id}`, data),
+  deleteSnippet: (id: number) => api.del(`/assistant/snippets/${id}`),
+}

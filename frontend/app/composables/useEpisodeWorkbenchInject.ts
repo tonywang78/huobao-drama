@@ -14,3 +14,7 @@ export function useEpisodeWorkbenchInject(): EpisodeWorkbench {
   if (!wb) throw new Error('Episode workbench context missing')
   return wb
 }
+
+export function useEpisodeWorkbenchOptional(): EpisodeWorkbench | null {
+  return inject(EPISODE_WORKBENCH_KEY, null)
+}
