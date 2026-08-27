@@ -1015,9 +1015,16 @@ async function generateFinalPrompt(m) {
   finalPromptGen.value = true
   try {
     let res
-    if (m.kindKey === 'character') res = await characterAPI.generatePrompt(m.id, epId, true)
-    else if (m.kindKey === 'scene') res = await sceneAPI.generatePrompt(m.id, epId, true)
-    else res = await propAPI.generatePrompt(m.id, epId, true)
+    if (m.kindKey === 'character') {
+      await characterAPI.update(m.id, { name: editDraft.name, role: editDraft.role, appearance: editDraft.appearance, description: editDraft.description, styling: editDraft.styling })
+      res = await characterAPI.generatePrompt(m.id, epId, true)
+    } else if (m.kindKey === 'scene') {
+      await sceneAPI.update(m.id, { location: editDraft.location, time: editDraft.time, prompt: editDraft.prompt, lighting: editDraft.lighting })
+      res = await sceneAPI.generatePrompt(m.id, epId, true)
+    } else {
+      await propAPI.update(m.id, { name: editDraft.name, type: editDraft.type, description: editDraft.description })
+      res = await propAPI.generatePrompt(m.id, epId, true)
+    }
     const fp = res?.final_prompt || res?.finalPrompt
     if (!fp) throw new Error('最终提示词生成失败，请重试')
     editTarget.value = { ...m, finalPrompt: fp }

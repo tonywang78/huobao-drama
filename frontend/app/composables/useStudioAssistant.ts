@@ -518,6 +518,22 @@ export function useStudioAssistant() {
     }
   }
 
+  function lookupAssetImageUrl(type, id) {
+    if (!id) return ''
+    let item = null
+    if (wb) {
+      const list = type === 'character' ? (wb.chars || [])
+        : type === 'scene' ? (wb.scenes || [])
+          : type === 'prop' ? (wb.propItems || [])
+            : []
+      item = list.find(x => x.id === id)
+    }
+    if (!item) item = (assets.value || []).find(a => a.type === type && a.id === id)
+    if (!item) return ''
+    const raw = item.image_url || item.imageUrl || item.local_path || item.localPath || ''
+    return mediaUrl(raw)
+  }
+
   function resolveRefs(text) {
     const found = []
     const sorted = [...mentionOptions.value].sort((a, b) => (b.value?.length || 0) - (a.value?.length || 0))
@@ -528,16 +544,21 @@ export function useStudioAssistant() {
       if (!text.includes('@' + token)) continue
       used.add(token)
       const category = opt.meta?.category || 'asset'
+      const type = opt.meta?.type || (opt.group === '场景' ? 'scene' : opt.group === '道具' ? 'prop' : 'character')
+      let image_url
+      if (category === 'asset' && opt.meta?.id) {
+        image_url = lookupAssetImageUrl(type, opt.meta.id) || (opt.meta?.image_url ? mediaUrl(opt.meta.image_url) : undefined)
+      } else if (category === 'generated' && opt.meta?.image_url) {
+        image_url = mediaUrl(opt.meta.image_url)
+      }
       found.push({
         category,
-        type: opt.meta?.type || (opt.group === '场景' ? 'scene' : opt.group === '道具' ? 'prop' : 'character'),
+        type,
         id: opt.meta?.id ?? undefined,
         key: opt.meta?.key,
         name: opt.meta?.name || opt.label || token,
         token,
-        image_url: (category === 'asset' || category === 'generated') && opt.meta?.image_url
-          ? mediaUrl(opt.meta.image_url)
-          : undefined,
+        image_url,
       })
     }
     return found

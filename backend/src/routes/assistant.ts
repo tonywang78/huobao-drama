@@ -12,6 +12,7 @@ import {
   appendMessage,
   buildContextSnapshot,
   collectToolOutcomes,
+  enrichRefs,
   tryDirectImageEdit,
   createSnippet,
   deleteSnippet,
@@ -158,7 +159,8 @@ app.post('/chat', async (c) => {
   const dramaId = num(body.drama_id) || ui.drama_id
   const episodeId = num(body.episode_id) || ui.episode_id
   const text = String(body.message || body.text || '').trim()
-  const refs = Array.isArray(body.refs) ? body.refs : []
+  const rawRefs = Array.isArray(body.refs) ? body.refs : []
+  const refs = await enrichRefs(rawRefs, dramaId)
   const attachments = Array.isArray(body.attachments) ? body.attachments : []
   if (!text && !refs.length && !attachments.length) return badRequest(c, 'message required')
 
@@ -167,8 +169,11 @@ app.post('/chat', async (c) => {
 
   logTaskStart('Assistant', 'chat', { threadId: thread.id, dramaId, episodeId, stage: ui.stage })
 
-  const snapshot = await buildContextSnapshot({ ...ui, drama_id: dramaId, episode_id: episodeId })
   const history = await listThreadMessages(thread.id)
+  const snapshot = await buildContextSnapshot(
+    { ...ui, drama_id: dramaId, episode_id: episodeId },
+    { compact: history.length > 0 },
+  )
   const latestGenerated = findLatestGeneratedArtifact(history)
   const userContent: AssistantMessageContent = { text, refs, attachments }
   await appendMessage(thread.id, 'user', userContent)

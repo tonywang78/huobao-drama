@@ -76,7 +76,17 @@ test('image generation prefers the stored final prompt with agent generation and
   assert.match(characters, /text_model/)
   assert.match(characters, /finalPrompt \|\| characterImagePrompt\(char, stylePrompt\)/)
   assert.match(scenes, /ensureSceneFinalPrompt\(scene, ep\.id, /)
-  // 描述字段编辑后最终提示词失效
-  assert.match(characters, /updates\.finalPrompt = null/)
-  assert.match(scenes, /updates\.finalPrompt = null/)
+})
+
+test('prompt agent user message includes the latest scene description and lighting', () => {
+  const service = read('src/services/final-prompt.ts')
+
+  assert.match(service, /function scenePromptRequest/)
+  assert.match(service, /scene\.prompt/)
+  assert.match(service, /scene\.lighting/)
+  assert.match(service, /场景描述：\$\{scene\.prompt/)
+  assert.match(service, /场景光影：\$\{scene\.lighting/)
+  assert.match(service, /runPromptAgent\(episodeId, scene\.dramaId, scenePromptRequest\(scene\), opts\)/)
+  assert.match(service, /char\.appearance/)
+  assert.match(service, /char\.styling/)
 })

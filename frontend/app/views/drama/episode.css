@@ -1159,6 +1159,13 @@
 
 /* 璧勪骇鏍忓姩浣滐細鎵归噺鐢熸垚鍥剧墖 */
 .asset-bar-actions { align-items: center; }
+.asset-bar-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--surface-outline);
+  margin: 0 2px;
+}
+.asset-btn-extract { box-shadow: none; }
 .asset-btn-batch {
   background: var(--accent-bg);
   color: var(--accent-text);

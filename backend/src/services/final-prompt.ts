@@ -31,13 +31,44 @@ async function runPromptAgent(episodeId: number, dramaId: number, message: strin
   await agent.generate([{ role: 'user', content: message }], { maxSteps: 12, requestContext })
 }
 
+function characterPromptRequest(char: CharacterRow) {
+  return [
+    `为角色「${char.name}」(character_id=${char.id}) 生成三视图最终提示词，并调用 save_character_final_prompt 保存。`,
+    '必须依据以下最新字段创作，样貌与妆造的改动必须全部落地，不要只根据角色名想象：',
+    `角色名：${char.name || ''}`,
+    `定位：${char.role || ''}`,
+    `样貌：${char.appearance || char.description || ''}`,
+    `妆造：${char.styling || ''}`,
+  ].join('\n')
+}
+
+function scenePromptRequest(scene: SceneRow) {
+  return [
+    `为场景「${scene.location}」(scene_id=${scene.id}) 生成固定视角（前景/中景/后景）最终提示词，并调用 save_scene_final_prompt 保存。`,
+    '必须依据以下最新字段创作，场景描述与光影的改动必须全部落地，不要只根据地点名想象：',
+    `地点：${scene.location || ''}`,
+    `时间：${scene.time || ''}`,
+    `场景描述：${scene.prompt || ''}`,
+    `场景光影：${scene.lighting || ''}`,
+  ].join('\n')
+}
+
+function propPromptRequest(prop: PropRow) {
+  return [
+    `为道具「${prop.name}」(prop_id=${prop.id}) 生成白底单品最终提示词，并调用 save_prop_final_prompt 保存。`,
+    '必须依据以下最新字段创作，物品外貌的改动必须全部落地，不要只根据道具名想象：',
+    `道具名：${prop.name || ''}`,
+    `类型：${prop.type || ''}`,
+    `物品外貌：${prop.description || ''}`,
+  ].join('\n')
+}
+
 /** 确保角色拥有三视图最终提示词，返回最终提示词（失败返回 ''）；force 时忽略已有提示词强制重新生成 */
 export async function ensureCharacterFinalPrompt(char: CharacterRow, episodeId: number, force = false, opts?: PromptAgentOptions): Promise<string> {
   if (char.finalPrompt && !force) return char.finalPrompt
   try {
     logTaskProgress('FinalPrompt', 'character-generate', { characterId: char.id, episodeId })
-    await runPromptAgent(episodeId, char.dramaId,
-      `为角色「${char.name}」(character_id=${char.id}) 生成三视图最终提示词，并调用 save_character_final_prompt 保存。`, opts)
+    await runPromptAgent(episodeId, char.dramaId, characterPromptRequest(char), opts)
     const [fresh] = await db.select().from(schema.characters).where(eq(schema.characters.id, char.id))
     return fresh?.finalPrompt || ''
   } catch (err: any) {
@@ -51,8 +82,7 @@ export async function ensureSceneFinalPrompt(scene: SceneRow, episodeId: number,
   if (scene.finalPrompt && !force) return scene.finalPrompt
   try {
     logTaskProgress('FinalPrompt', 'scene-generate', { sceneId: scene.id, episodeId })
-    await runPromptAgent(episodeId, scene.dramaId,
-      `为场景「${scene.location}」(scene_id=${scene.id}) 生成固定视角（前景/中景/后景）最终提示词，并调用 save_scene_final_prompt 保存。`, opts)
+    await runPromptAgent(episodeId, scene.dramaId, scenePromptRequest(scene), opts)
     const [fresh] = await db.select().from(schema.scenes).where(eq(schema.scenes.id, scene.id))
     return fresh?.finalPrompt || ''
   } catch (err: any) {
@@ -66,8 +96,7 @@ export async function ensurePropFinalPrompt(prop: PropRow, episodeId: number, fo
   if (prop.finalPrompt && !force) return prop.finalPrompt
   try {
     logTaskProgress('FinalPrompt', 'prop-generate', { propId: prop.id, episodeId })
-    await runPromptAgent(episodeId, prop.dramaId,
-      `为道具「${prop.name}」(prop_id=${prop.id}) 生成白底单品最终提示词，并调用 save_prop_final_prompt 保存。`, opts)
+    await runPromptAgent(episodeId, prop.dramaId, propPromptRequest(prop), opts)
     const [fresh] = await db.select().from(schema.props).where(eq(schema.props.id, prop.id))
     return fresh?.finalPrompt || ''
   } catch (err: any) {

@@ -11,6 +11,18 @@ const wb = useEpisodeWorkbenchInject()
               <span class="tag mono">{{ wb.assetReadyCount }}/{{ wb.assetTotalCount }} 已就绪</span>
               <span class="tag">{{ wb.lockedImageConfigLabel }}</span>
               <div class="ml-auto flex gap-1 asset-bar-actions">
+                <button
+                  v-for="t in wb.EXTRACT_TARGETS"
+                  :key="t.key"
+                  class="btn btn-sm asset-btn-extract"
+                  :disabled="wb.isExtracting(t.key)"
+                  @click="wb.doExtract(t.key)"
+                >
+                  <Loader2 v-if="wb.isExtracting(t.key)" :size="11" class="animate-spin" />
+                  <svg v-else width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  {{ (t.key === 'characters' ? wb.chars.length : t.key === 'scenes' ? wb.scenes.length : wb.propItems.length) ? `重提${t.label}` : `提取${t.label}` }}
+                </button>
+                <span class="asset-bar-divider" />
                 <button class="btn btn-sm asset-btn-batch" @click="wb.batchCharImages">
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                   批量角色
@@ -26,13 +38,22 @@ const wb = useEpisodeWorkbenchInject()
                 <button class="btn btn-sm" @click="wb.openAssetImport"><Upload :size="11" /> 导入文件</button>
               </div>
             </div>
-            <div v-if="!wb.chars.length && !wb.scenes.length && !wb.propItems.length" class="step-empty asset-empty-state">
+            <div v-if="wb.extractingTargets.length && !wb.chars.length && !wb.scenes.length && !wb.propItems.length" class="step-loading">
+              <Loader2 :size="24" class="animate-spin" style="color:var(--accent)" />
+              <div class="loading-text">正在提取{{ wb.extractingLabels }}...</div>
+            </div>
+            <div v-else-if="!wb.chars.length && !wb.scenes.length && !wb.propItems.length" class="step-empty asset-empty-state">
               <div class="empty-visual">
                 <Plus :size="32" />
               </div>
-              <div class="empty-title">添加资产</div>
-              <div class="empty-desc">逐个新增角色、场景与道具，从素材库选入，或上传 md/txt 批量导入。</div>
+              <div class="empty-title">开始提取资产</div>
+              <div class="empty-desc">改写完成后进入本页会自动提取角色、场景和道具。也可手动提取、从素材库选入，或上传 md/txt 导入。</div>
               <div class="asset-empty-actions">
+                <button class="btn btn-primary" :disabled="!!wb.extractingTargets.length" @click="wb.doExtractAll">
+                  <Loader2 v-if="wb.extractingTargets.length" :size="13" class="animate-spin" />
+                  <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                  {{ wb.extractingTargets.length ? `正在提取${wb.extractingLabels}…` : '开始提取' }}
+                </button>
                 <button class="btn btn-primary" @click="wb.openAssetCreate('character')"><Plus :size="13" /> 新增角色</button>
                 <button class="btn btn-primary" @click="wb.openAssetCreate('scene')"><Plus :size="13" /> 新增场景</button>
                 <button class="btn btn-primary" @click="wb.openAssetCreate('prop')"><Plus :size="13" /> 新增道具</button>

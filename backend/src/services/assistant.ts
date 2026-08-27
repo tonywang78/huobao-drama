@@ -14,7 +14,7 @@ import { logTaskProgress } from '../utils/task-logger.js'
 
 const IMAGE_EDIT_HINT = /去掉|删除|移除|改|换|修|调整|美化|加|减|remove|edit|change|fix|crop|blur|enhance|放大|缩小|背景|人物|人|图生图|改图/i
 
-export const HISTORY_LIMIT = 20
+export const HISTORY_LIMIT = 40
 const EXCERPT = 2000
 
 export type AssistantRefCategory = 'asset' | 'catalog' | 'project' | 'generated'
@@ -171,7 +171,8 @@ function excerpt(text: string | null | undefined, n = EXCERPT) {
   return `${s.slice(0, n)}\n…(已截断，共 ${s.length} 字，可用 read_episode_content 读取全文)`
 }
 
-export async function buildContextSnapshot(ui: AssistantUiContext | undefined) {
+export async function buildContextSnapshot(ui: AssistantUiContext | undefined, opts?: { compact?: boolean }) {
+  const compact = !!opts?.compact
   const lines: string[] = ['【当前上下文】']
   const stage = ui?.stage || 'home'
   lines.push(`界面：${STAGE_LABEL[stage] || stage}`)
@@ -195,7 +196,9 @@ export async function buildContextSnapshot(ui: AssistantUiContext | undefined) {
     const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, episodeId))
     if (ep) {
       lines.push(`集：第 ${ep.episodeNumber} 集 ${ep.title || ''}`.trim())
-      if (stage === 'raw') {
+      if (compact) {
+        lines.push('（多轮对话中省略剧本摘录；需要全文请调用 read_episode_content）')
+      } else if (stage === 'raw') {
         const body = excerpt(ep.content)
         lines.push(body ? `原始内容摘录：\n${body}` : '原始内容：空')
       } else if (stage === 'rewrite' || stage === 'assets' || stage === 'storyboard' || stage === 'videos' || stage === 'export') {
@@ -241,7 +244,7 @@ export async function buildContextSnapshot(ui: AssistantUiContext | undefined) {
     }
   }
 
-  const snippetLines = await formatSnippetsForSnapshot(dramaId)
+  const snippetLines = await formatSnippetsForSnapshot(dramaId, compact ? 40 : 80)
   if (snippetLines.length) {
     lines.push('【常用提示词】（用户保存的快捷操作，可按名称理解意图）')
     lines.push(...snippetLines)
@@ -270,14 +273,39 @@ export async function listSnippets(dramaId?: number | null) {
   return rows.map(serializeSnippet)
 }
 
-async function formatSnippetsForSnapshot(dramaId: number | null) {
+async function formatSnippetsForSnapshot(dramaId: number | null, previewLen = 80) {
   const items = await listSnippets(dramaId)
   if (!items.length) return []
   return items.map(s => {
     const scope = s.drama_id ? '[本项目]' : '[共享]'
-    const preview = excerpt(String(s.body || ''), 80).replace(/\n/g, ' ')
+    const preview = excerpt(String(s.body || ''), previewLen).replace(/\n/g, ' ')
     return `- ${scope} ${s.title}：${preview}`
   })
+}
+
+function formatAssistantHistoryContent(content: AssistantMessageContent): string {
+  const parts: string[] = []
+  const text = (content.text || '').trim()
+  if (text) parts.push(text)
+  const artifacts = content.artifacts || []
+  const doneArts = artifacts.filter(a => {
+    const url = a.url?.trim()
+    const status = a.status || (url ? 'done' : 'processing')
+    return url && status !== 'processing' && status !== 'failed'
+  })
+  if (doneArts.length) {
+    parts.push('【本轮生成图】')
+    for (const a of doneArts) {
+      const tid = a.taskId ?? (a as { task_id?: number }).task_id
+      parts.push(`- 生成图#${tid} ${a.url}`)
+    }
+  } else if (artifacts.some(a => a.status === 'processing' || (!a.url && a.status !== 'failed'))) {
+    parts.push('（本轮有图片正在生成）')
+  }
+  if (content.proposal?.action) {
+    parts.push(`（待确认工序：${content.proposal.action}）`)
+  }
+  return parts.join('\n') || '（已完成工具调用）'
 }
 
 export async function createSnippet(opts: {
@@ -477,8 +505,44 @@ export function findLatestGeneratedArtifact(
 function refsHaveImageSource(refs?: AssistantRef[]): boolean {
   return (refs || []).some(r => {
     const n = normalizeRef(r)
-    return (n.category === 'generated' || n.category === 'asset') && !!n.image_url
+    if (n.category === 'generated' && !!n.image_url) return true
+    if (n.category === 'asset' && n.id) return true
+    return false
   })
+}
+
+/** 从库中读取资产当前图片（不信任前端缓存的 image_url） */
+export async function resolveAssetImageUrl(
+  type: string,
+  id: number,
+  dramaId: number,
+): Promise<string | null> {
+  if (!id || !dramaId) return null
+  if (type === 'character') {
+    const [c] = await db.select().from(schema.characters).where(eq(schema.characters.id, id))
+    if (c && c.dramaId === dramaId && !c.deletedAt && c.imageUrl) return c.imageUrl
+  } else if (type === 'scene') {
+    const [s] = await db.select().from(schema.scenes).where(eq(schema.scenes.id, id))
+    if (s && s.dramaId === dramaId && !s.deletedAt && s.imageUrl) return s.imageUrl
+  } else if (type === 'prop') {
+    const [p] = await db.select().from(schema.props).where(eq(schema.props.id, id))
+    if (p && p.dramaId === dramaId && !p.deletedAt && p.imageUrl) return p.imageUrl
+  }
+  return null
+}
+
+export async function enrichRefs(refs: AssistantRef[], dramaId?: number | null): Promise<AssistantRef[]> {
+  if (!dramaId || dramaId <= 0) return (refs || []).map(r => normalizeRef(r))
+  const out: AssistantRef[] = []
+  for (const raw of refs || []) {
+    const r = normalizeRef(raw)
+    if (r.category === 'asset' && r.id) {
+      const dbUrl = await resolveAssetImageUrl(r.type, r.id, dramaId)
+      if (dbUrl) r.image_url = dbUrl
+    }
+    out.push(r)
+  }
+  return out
 }
 export function normalizeRef(raw: Partial<AssistantRef> & { type?: string }): AssistantRef {
   const type = raw.type || 'character'
@@ -601,7 +665,7 @@ export async function toModelMessages(
     const text = (m.content.text || '').trim()
     if (!text && !m.content.refs?.length && !m.content.attachments?.length && !m.content.artifacts?.length) continue
     if (m.role === 'assistant') {
-      messages.push({ role: 'assistant', content: text || '（已完成工具调用）' })
+      messages.push({ role: 'assistant', content: formatAssistantHistoryContent(m.content) })
       continue
     }
     messages.push({
@@ -635,12 +699,17 @@ function stripAtTokens(text: string, refs?: AssistantRef[]): string {
   return out.replace(/\s+/g, ' ').trim()
 }
 
-function collectRefImageUrls(refs?: AssistantRef[]): string[] {
+async function collectRefImageUrls(refs?: AssistantRef[], dramaId?: number | null): Promise<string[]> {
   const urls: string[] = []
   for (const raw of refs || []) {
     const r = normalizeRef(raw)
-    if ((r.category === 'generated' || r.category === 'asset') && r.image_url) {
+    if (r.category === 'generated' && r.image_url) {
       urls.push(r.image_url)
+      continue
+    }
+    if (r.category === 'asset' && r.id) {
+      const url = r.image_url || (dramaId ? await resolveAssetImageUrl(r.type, r.id, dramaId) : null)
+      if (url) urls.push(url)
     }
   }
   return [...new Set(urls.filter(Boolean))]
@@ -673,32 +742,33 @@ export async function tryDirectImageEdit(opts: {
   const dramaId = opts.dramaId && opts.dramaId > 0 ? opts.dramaId : null
   if (!dramaId) return null
 
-  let referenceUrls = collectRefImageUrls(opts.refs)
-  if (!referenceUrls.length && opts.attachments?.length) {
-    referenceUrls = [...new Set(opts.attachments.map(a => a.url).filter(Boolean))]
-  }
-  if (!referenceUrls.length && opts.latestGenerated?.url) {
-    referenceUrls = [opts.latestGenerated.url]
-  }
-  if (!referenceUrls.length) return null
-
   const hasGeneratedRef = (opts.refs || []).some(r => {
     const n = normalizeRef(r)
     return n.category === 'generated' && !!n.image_url
   })
-  const hasAssetImageRef = (opts.refs || []).some(r => {
+  const hasAssetRef = (opts.refs || []).some(r => {
     const n = normalizeRef(r)
-    return n.category === 'asset' && !!n.image_url
+    return n.category === 'asset' && !!n.id
   })
   const stripped = stripAtTokens(opts.text, opts.refs)
   const looksLikeEdit = IMAGE_EDIT_HINT.test(stripped) || IMAGE_EDIT_HINT.test(opts.text)
 
   const shouldEdit = (hasGeneratedRef && !!stripped)
-    || (hasAssetImageRef && looksLikeEdit)
+    || (hasAssetRef && looksLikeEdit)
     || (opts.attachments?.length && looksLikeEdit)
-    || (!hasGeneratedRef && !hasAssetImageRef && !!opts.latestGenerated?.url && looksLikeEdit)
+    || (!hasGeneratedRef && !hasAssetRef && !!opts.latestGenerated?.url && looksLikeEdit)
 
   if (!shouldEdit) return null
+
+  let referenceUrls = await collectRefImageUrls(opts.refs, dramaId)
+  if (!referenceUrls.length && opts.attachments?.length) {
+    referenceUrls = [...new Set(opts.attachments.map(a => a.url).filter(Boolean))]
+  }
+  // 用户 @ 了资产/生成图时，禁止回退到「最近生成图」，避免改错图
+  if (!referenceUrls.length && !hasAssetRef && !hasGeneratedRef && opts.latestGenerated?.url) {
+    referenceUrls = [opts.latestGenerated.url]
+  }
+  if (!referenceUrls.length) return null
 
   const prompt = await buildImageEditPrompt(opts.text, opts.refs, dramaId)
   if (!prompt) return null

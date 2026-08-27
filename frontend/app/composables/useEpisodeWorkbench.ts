@@ -437,17 +437,63 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     }
   }
 
-  /** 弹窗内生成最终提示词（不生图）；已有最终提示词时重新生成（force） */
+  function collectAssetInfoPayload() {
+    const detail = assetDetail.value
+    if (!detail?.open || !detail.item?.id) return null
+    const item = detail.item
+    const payload = {}
+    if (detail.type === 'character') {
+      if (assetDetailDraft.value.appearance !== (item.appearance || '')) payload.appearance = assetDetailDraft.value.appearance
+      if (assetDetailDraft.value.styling !== (item.styling || '')) payload.styling = assetDetailDraft.value.styling
+    } else if (detail.type === 'scene') {
+      if (assetDetailDraft.value.prompt !== (item.prompt || '')) payload.prompt = assetDetailDraft.value.prompt
+      if (assetDetailDraft.value.lighting !== (item.lighting || '')) payload.lighting = assetDetailDraft.value.lighting
+    } else if (assetDetailDraft.value.description !== (item.description || '')) {
+      payload.description = assetDetailDraft.value.description
+    }
+    return { detail, item, payload, infoChanged: Object.keys(payload).length > 0 }
+  }
+
+  function applyAssetInfoLocally(detail, item, infoPatch, promptValue) {
+    Object.assign(item, infoPatch, { final_prompt: promptValue, finalPrompt: promptValue })
+    const list = detail.type === 'character' ? chars.value : detail.type === 'scene' ? scenes.value : propItems.value
+    const target = list.find(x => x.id === item.id)
+    if (target) Object.assign(target, infoPatch, { final_prompt: promptValue, finalPrompt: promptValue })
+  }
+
+  /** 把弹窗里未保存的样貌/场景描述/外貌写回后端；信息变更时清空旧最终提示词 */
+  async function persistAssetInfoIfDirty() {
+    const collected = collectAssetInfoPayload()
+    if (!collected) return false
+    const { detail, item, payload, infoChanged } = collected
+    if (!infoChanged) return true
+    payload.final_prompt = ''
+    try {
+      if (detail.type === 'character') await characterAPI.update(item.id, payload)
+      else if (detail.type === 'scene') await sceneAPI.update(item.id, payload)
+      else await propAPI.update(item.id, payload)
+      applyAssetInfoLocally(detail, item, payload, null)
+      assetPromptDraft.value = ''
+      assetPromptDirty.value = false
+      return true
+    } catch (e) {
+      toast.error(e.message || '保存修改失败')
+      return false
+    }
+  }
+
+  /** 弹窗内生成最终提示词（不生图）；先落库当前描述，再强制重新生成 */
   async function genAssetFinalPrompt() {
     const detail = assetDetail.value
     if (!detail.open || !detail.item?.id) return
-    const force = !!assetFinalPrompt.value
+    const hadPrompt = !!(assetFinalPrompt.value || assetPromptDraft.value)
+    if (!(await persistAssetInfoIfDirty())) return
     try {
-      const fp = await ensureAssetPrompt(detail.type, detail.item.id, force)
+      const fp = await ensureAssetPrompt(detail.type, detail.item.id, true)
       if (!fp) throw new Error('最终提示词生成失败，请重试')
       assetPromptDraft.value = fp
       assetPromptDirty.value = false
-      toast.success(force ? '最终提示词已重新生成' : '最终提示词已生成')
+      toast.success(hadPrompt ? '最终提示词已重新生成' : '最终提示词已生成')
     } catch (e) {
       toast.error(e.message || '最终提示词生成失败')
     }
@@ -465,24 +511,12 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
   }
 
   async function saveAssetDetail() {
-    const detail = assetDetail.value
-    if (!detail.open || !detail.item?.id) return
-    const item = detail.item
-    // 只提交真正修改过的字段：无修改保存不应触发后端的提示词失效置空
-    const payload = {}
-    let infoChanged = false
-    if (detail.type === 'character') {
-      if (assetDetailDraft.value.appearance !== (item.appearance || '')) payload.appearance = assetDetailDraft.value.appearance
-      if (assetDetailDraft.value.styling !== (item.styling || '')) payload.styling = assetDetailDraft.value.styling
-    } else if (detail.type === 'scene') {
-      if (assetDetailDraft.value.prompt !== (item.prompt || '')) payload.prompt = assetDetailDraft.value.prompt
-      if (assetDetailDraft.value.lighting !== (item.lighting || '')) payload.lighting = assetDetailDraft.value.lighting
-    } else {
-      if (assetDetailDraft.value.description !== (item.description || '')) payload.description = assetDetailDraft.value.description
-    }
-    infoChanged = Object.keys(payload).length > 0
-    // 手动编辑过最终提示词才提交；空串视为清空
+    const collected = collectAssetInfoPayload()
+    if (!collected) return
+    const { detail, item, payload, infoChanged } = collected
+    // 手动编辑过最终提示词才提交；信息字段变更时清空旧最终提示词，下次生成会按新描述重写
     if (assetPromptDirty.value) payload.final_prompt = assetPromptDraft.value.trim() || ''
+    else if (infoChanged) payload.final_prompt = ''
     if (!infoChanged && !assetPromptDirty.value) {
       toast.info('没有需要保存的修改')
       return
@@ -492,14 +526,11 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
       if (detail.type === 'character') await characterAPI.update(item.id, payload)
       else if (detail.type === 'scene') await sceneAPI.update(item.id, payload)
       else await propAPI.update(item.id, payload)
-      // 本地同步：手动编辑的提示词以草稿为准；仅信息字段变更时提示词已被后端置空
       const { final_prompt, ...infoPatch } = payload
       const promptValue = assetPromptDirty.value ? (payload.final_prompt || null) : (infoChanged ? null : (item.final_prompt || item.finalPrompt || null))
-      Object.assign(item, infoPatch, { final_prompt: promptValue, finalPrompt: promptValue })
-      const list = detail.type === 'character' ? chars.value : detail.type === 'scene' ? scenes.value : propItems.value
-      const target = list.find(x => x.id === item.id)
-      if (target) Object.assign(target, infoPatch, { final_prompt: promptValue, finalPrompt: promptValue })
+      applyAssetInfoLocally(detail, item, infoPatch, promptValue)
       if (assetPromptDirty.value) assetPromptDraft.value = payload.final_prompt || ''
+      else if (infoChanged) assetPromptDraft.value = ''
       assetPromptDirty.value = false
       toast.success('修改已保存')
     } catch (e) {
@@ -865,6 +896,7 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     }
     panel.value = 'production'
     prodTab.value = 'assets'
+    maybeAutoExtract()
   }
   const canExport = computed(() => !!sbs.value.length && shotVidCount.value === sbs.value.length)
   function goNextProd() {
@@ -906,6 +938,7 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
       if (localScript.value.trim()) saveScr()
       panel.value = 'production'
       prodTab.value = 'assets'
+      maybeAutoExtract()
     }
   }
 
@@ -1035,6 +1068,7 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     if (stageId === 'assets') {
       panel.value = 'production'
       prodTab.value = 'assets'
+      maybeAutoExtract()
       return
     }
     if (stageId === 'videos') {
@@ -1101,6 +1135,7 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     if (key.startsWith('prod:')) {
       panel.value = 'production'
       prodTab.value = key.replace('prod:', '')
+      if (prodTab.value === 'assets') maybeAutoExtract()
       return
     }
     panel.value = 'export'
@@ -1269,10 +1304,76 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     toast.success('已跳过 AI 改写，当前将直接使用原始内容')
     panel.value = 'production'
     prodTab.value = 'assets'
+    maybeAutoExtract()
   }
-  /** 页面加载后恢复仍在运行的批量视频提示词任务 */
+
+  // 资产提取：按类型独立的异步任务，三类可并行；进入空资产页时自动提取
+  const EXTRACT_TARGETS = [
+    { key: 'characters', label: '角色' },
+    { key: 'scenes', label: '场景' },
+    { key: 'props', label: '道具' },
+  ]
+  const extractingTargets = ref([])
+  const extractingLabels = computed(() => EXTRACT_TARGETS.filter(t => extractingTargets.value.includes(t.key)).map(t => t.label).join('、'))
+  function isExtracting(target) { return extractingTargets.value.includes(target) }
+
+  function doExtract(target) {
+    if (isExtracting(target) || !epId.value) return
+    saveScr()
+    extractingTargets.value.push(target)
+    episodeAPI.extract(epId.value, target, chatModelOverride(), chatConfigId())
+      .then(() => pollExtractStatus(target))
+      .catch(e => {
+        extractingTargets.value = extractingTargets.value.filter(t => t !== target)
+        toast.error(e.message)
+      })
+  }
+  function doExtractAll() { EXTRACT_TARGETS.forEach(t => doExtract(t.key)) }
+
+  function maybeAutoExtract() {
+    if (!epId.value) return
+    const hasScript = !!(localScript.value.trim() || scriptContent.value)
+    if (!hasScript) return
+    if (chars.value.length || scenes.value.length || propItems.value.length) return
+    if (extractingTargets.value.length) return
+    doExtractAll()
+  }
+
+  function pollExtractStatus(target, attempts = 150) {
+    const label = EXTRACT_TARGETS.find(t => t.key === target)?.label || target
+    const tick = async (left) => {
+      try {
+        const st = await episodeAPI.extractStatus(epId.value)
+        const task = st?.[target]
+        if (task && task.status !== 'running') {
+          extractingTargets.value = extractingTargets.value.filter(t => t !== target)
+          if (task.status === 'done') {
+            toast.success(`${label}提取完成`)
+            await refresh()
+          } else {
+            toast.error(task.error || `${label}提取失败`)
+          }
+          return
+        }
+      } catch {}
+      if (left > 0) setTimeout(() => tick(left - 1), 2500)
+      else extractingTargets.value = extractingTargets.value.filter(t => t !== target)
+    }
+    setTimeout(() => tick(attempts), 2500)
+  }
+
+  /** 页面加载后恢复仍在运行的提取 / 批量视频提示词任务 */
   async function syncExtractStatus() {
     if (!epId.value) return
+    try {
+      const st = await episodeAPI.extractStatus(epId.value)
+      for (const t of EXTRACT_TARGETS) {
+        if (st?.[t.key]?.status === 'running' && !isExtracting(t.key)) {
+          extractingTargets.value.push(t.key)
+          pollExtractStatus(t.key)
+        }
+      }
+    } catch {}
     try {
       const vp = await episodeAPI.videoPromptsStatus(epId.value)
       if (vp?.status === 'running' && !videoPromptBatch.value.running) {
@@ -2388,6 +2489,7 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     productionBlockMessage, productionBlockActionLabel, goProductionBlockTarget, canExport, goNextProd,
     prevStepLabel, nextStepLabel, canGoNext, goPrevStep, goNextStep, showBottomBubble, bubbleSteps, activeBubbleKey,
     prodTabDefs, saveRaw, saveScr, doRewrite, skipRewrite, assetImportOpen, storyboardImportOpen, onAssetImported, onStoryboardImported,
+    EXTRACT_TARGETS, extractingTargets, extractingLabels, isExtracting, doExtract, doExtractAll,
     exportMerges, exportSelectedReadyIds, exportReadyIds, isExportSelected, toggleExportSelect, toggleSelectAllExport,
     loadExportMerges, doMerge, shotVidCount, hasVid, getVideoUrl, formatHistoryTime,
     assetDetail, assetDetailDraft, assetImageHistory, assetPreviewImageUrl, assetDetailDisplayUrl,
