@@ -1,5 +1,5 @@
 <script setup>
-import { Loader2, Plus, X, ListTodo, Upload, Play, MapPin, Trash2 } from 'lucide-vue-next'
+import { Loader2, Plus, Upload, Trash2 } from 'lucide-vue-next'
 
 const wb = useEpisodeWorkbenchInject()
 </script>
@@ -86,72 +86,37 @@ const wb = useEpisodeWorkbenchInject()
               <button class="asset-add-btn" @click="wb.openAssetCreate('character')"><Plus :size="11" /> 新增</button>
             </div>
             <template v-if="wb.visualChars.length">
-            <div class="character-asset-grid">
-              <article
+            <div class="asset-grid">
+              <AssetCard
                 v-for="c in wb.visualChars"
                 :key="c.id"
-                class="card character-asset-card"
-                :class="{ 'is-selected': wb.assetSelectMode && wb.isAssetSelected('character', c.id) }"
-                tabindex="0"
-                role="button"
+                type="character"
+                :title="c.name"
+                :tag="c.role || '角色'"
+                :meta-lines="[`样貌：${wb.characterAppearanceValue(c)}`, `妆造：${wb.characterStylingValue(c)}`]"
+                final-prompt-label="最终提示词 · 三视图"
+                :final-prompt="c.final_prompt || c.finalPrompt || ''"
+                final-prompt-placeholder="首次生成形象时由提示词 Agent 自动生成"
+                :image-src="wb.assetImageSrc(c)"
+                :thumb-src="wb.thumbOf(wb.assetImageSrc(c))"
+                :has-image="!!(c.image_url || c.imageUrl)"
+                :pending="wb.isPendingCharImage(c.id)"
+                :uploading="wb.isUploadingAsset('character', c.id)"
+                :download-href="wb.assetImageSrc(c)"
+                :download-name="wb.assetDownloadName('character', c)"
+                download-title="下载角色形象图"
+                upload-title="上传角色形象图"
+                delete-title="从本集移除角色"
+                :selected="wb.isAssetSelected('character', c.id)"
+                :select-mode="wb.assetSelectMode"
                 @click="wb.onAssetCardClick('character', c)"
-                @keydown.enter.prevent="wb.onAssetCardClick('character', c)"
-                @keydown.space.prevent="wb.onAssetCardClick('character', c)"
-              >
-                <span
-                  v-if="wb.assetSelectMode"
-                  class="shot-check asset-check"
-                  :class="{ on: wb.isAssetSelected('character', c.id) }"
-                >
-                  <svg v-if="wb.isAssetSelected('character', c.id)" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                </span>
-                <button v-else class="asset-del-btn" title="从本集移除角色" @click.stop="wb.askDeleteAsset('character', c)"><X :size="11" /></button>
-                <div class="character-asset-main">
-                  <div class="character-asset-overview"><div class="character-portrait">
-                      <img
-                        v-if="c.image_url || c.imageUrl"
-                        :src="wb.thumbOf(wb.assetImageSrc(c))"
-                        class="previewable-image"
-                        loading="lazy"
-                        @error="wb.thumbFallback($event, wb.assetImageSrc(c))"
-                        @click.stop="wb.assetSelectMode ? wb.toggleAssetSelect('character', c.id) : wb.openImageViewer(wb.assetImageSrc(c), `${c.name} 角色形象`)"
-                      />
-                      <div v-else class="character-portrait-empty">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                      </div>
-                      <span class="asset-cover-badge" :class="(c.image_url || c.imageUrl) ? 'is-ready' : (wb.isPendingCharImage(c.id) ? 'is-pending' : '')">
-                        {{ (c.image_url || c.imageUrl) ? '形象已生成' : (wb.isPendingCharImage(c.id) ? '形象生成中' : '形象待生成') }}
-                      </span>
-                    </div>
-
-                    <div class="character-asset-head">
-                      <div class="character-title-block">
-                        <div class="character-name-row">
-                          <strong class="character-name">{{ c.name }}</strong>
-                          <span class="tag">{{ c.role || '角色' }}</span>
-                        </div>
-                        <div class="character-visual-summary" :title="wb.characterVisualSummary(c)">
-                          <span>样貌：{{ wb.characterAppearanceValue(c) }}</span>
-                          <span>妆造：{{ wb.characterStylingValue(c) }}</span>
-                        </div>
-                      </div>
-                      <button class="btn btn-sm character-gen-btn" :disabled="wb.isPendingCharImage(c.id)" @click.stop="wb.genCharImg(c.id)">
-                        <Loader2 v-if="wb.isPendingCharImage(c.id)" :size="11" class="animate-spin" />
-                        {{ (c.image_url || c.imageUrl) ? '重绘' : (wb.isPendingCharImage(c.id) ? '生成中' : '生成') }}
-                      </button>
-                      <button class="btn btn-sm" title="上传角色形象图" :disabled="wb.isUploadingAsset('character', c.id)" @click.stop="wb.uploadAssetImage('character', c.id)">
-                        <Loader2 v-if="wb.isUploadingAsset('character', c.id)" :size="11" class="animate-spin" />
-                        <svg v-else width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                        上传
-                      </button>
-                    </div>
-                  </div>
-                  <div class="asset-final-prompt" :title="c.final_prompt || c.finalPrompt || ''">
-                    <span class="afp-label">最终提示词 · 三视图</span>
-                    <span :class="['afp-text', !(c.final_prompt || c.finalPrompt) && 'dim']">{{ c.final_prompt || c.finalPrompt || '首次生成形象时由提示词 Agent 自动生成' }}</span>
-                  </div>
-                </div>
-              </article>
+                @delete="wb.askDeleteAsset('character', c)"
+                @toggle-select="wb.toggleAssetSelect('character', c.id)"
+                @generate="wb.genCharImg(c.id)"
+                @upload="wb.uploadAssetImage('character', c.id)"
+                @preview="wb.openImageViewer(wb.assetImageSrc(c), `${c.name} 角色形象`)"
+                @thumb-error="wb.thumbFallback($event, wb.assetImageSrc(c))"
+              />
             </div>
             </template>
 
@@ -162,61 +127,35 @@ const wb = useEpisodeWorkbenchInject()
             </div>
             <template v-if="wb.scenes.length">
             <div class="asset-grid">
-              <div
+              <AssetCard
                 v-for="s in wb.scenes"
                 :key="s.id"
-                class="card asset-card asset-click-card"
-                :class="{ 'is-selected': wb.assetSelectMode && wb.isAssetSelected('scene', s.id) }"
-                tabindex="0"
-                role="button"
+                type="scene"
+                :title="s.location"
+                :meta-lines="[wb.sceneDescriptionValue(s), wb.sceneLightingValue(s) ? `光照 · ${wb.sceneLightingValue(s)}` : ''].filter(Boolean)"
+                final-prompt-label="最终提示词 · 固定视角"
+                :final-prompt="s.final_prompt || s.finalPrompt || ''"
+                final-prompt-placeholder="首次生成图片时由提示词 Agent 自动生成（前景/中景/后景）"
+                :image-src="wb.assetImageSrc(s)"
+                :thumb-src="wb.thumbOf(wb.assetImageSrc(s))"
+                :has-image="!!(s.image_url || s.imageUrl)"
+                :pending="wb.isPendingSceneImage(s.id)"
+                :uploading="wb.isUploadingAsset('scene', s.id)"
+                :download-href="wb.assetImageSrc(s)"
+                :download-name="wb.assetDownloadName('scene', s)"
+                download-title="下载场景图"
+                upload-title="上传场景图"
+                delete-title="从本集移除场景"
+                :selected="wb.isAssetSelected('scene', s.id)"
+                :select-mode="wb.assetSelectMode"
                 @click="wb.onAssetCardClick('scene', s)"
-                @keydown.enter.prevent="wb.onAssetCardClick('scene', s)"
-                @keydown.space.prevent="wb.onAssetCardClick('scene', s)"
-              >
-                <span
-                  v-if="wb.assetSelectMode"
-                  class="shot-check asset-check"
-                  :class="{ on: wb.isAssetSelected('scene', s.id) }"
-                >
-                  <svg v-if="wb.isAssetSelected('scene', s.id)" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                </span>
-                <button v-else class="asset-del-btn" title="从本集移除场景" @click.stop="wb.askDeleteAsset('scene', s)"><X :size="11" /></button>
-                <div class="asset-cover wide">
-                  <img
-                    v-if="s.image_url || s.imageUrl"
-                    :src="wb.thumbOf(wb.assetImageSrc(s))"
-                    class="previewable-image"
-                    loading="lazy"
-                    @error="wb.thumbFallback($event, wb.assetImageSrc(s))"
-                    @click.stop="wb.assetSelectMode ? wb.toggleAssetSelect('scene', s.id) : wb.openImageViewer(wb.assetImageSrc(s), `${s.location} 场景图`)"
-                  />
-                  <div v-else class="asset-cover-empty">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                  </div>
-                  <span class="asset-cover-badge" :class="(s.image_url || s.imageUrl) ? 'is-ready' : (wb.isPendingSceneImage(s.id) ? 'is-pending' : '')">{{ (s.image_url || s.imageUrl) ? '已生成' : (wb.isPendingSceneImage(s.id) ? '生成中' : '待生成') }}</span>
-                </div>
-                <div class="asset-body">
-                  <div class="asset-name" :title="s.location">{{ s.location }}</div>
-                  <div class="asset-meta asset-desc dim" :title="wb.sceneDescriptionValue(s)">{{ wb.sceneDescriptionValue(s) }}</div>
-                  <div v-if="wb.sceneLightingValue(s)" class="asset-meta asset-light dim" :title="wb.sceneLightingValue(s)">光照 · {{ wb.sceneLightingValue(s) }}</div>
-                  <div class="asset-meta asset-final" :class="{ dim: !(s.final_prompt || s.finalPrompt) }" :title="s.final_prompt || s.finalPrompt || ''">
-                    <span class="afp-label">最终提示词 · 固定视角</span>
-                    {{ s.final_prompt || s.finalPrompt || '首次生成图片时由提示词 Agent 自动生成（前景/中景/后景）' }}
-                  </div>
-                </div>
-                <div class="asset-foot">
-                  <span :class="['dot', (s.image_url || s.imageUrl) && 'ok', wb.isPendingSceneImage(s.id) && 'pending']" />
-                  <button class="btn btn-sm ml-auto" title="上传场景图" :disabled="wb.isUploadingAsset('scene', s.id)" @click.stop="wb.uploadAssetImage('scene', s.id)">
-                    <Loader2 v-if="wb.isUploadingAsset('scene', s.id)" :size="11" class="animate-spin" />
-                    <svg v-else width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                    上传
-                  </button>
-                  <button class="btn btn-sm" :disabled="wb.isPendingSceneImage(s.id)" @click.stop="wb.genSceneImg(s.id)">
-                    <Loader2 v-if="wb.isPendingSceneImage(s.id)" :size="11" class="animate-spin" />
-                    {{ (s.image_url || s.imageUrl) ? '重绘' : (wb.isPendingSceneImage(s.id) ? '生成中' : '生成') }}
-                  </button>
-                </div>
-              </div>
+                @delete="wb.askDeleteAsset('scene', s)"
+                @toggle-select="wb.toggleAssetSelect('scene', s.id)"
+                @generate="wb.genSceneImg(s.id)"
+                @upload="wb.uploadAssetImage('scene', s.id)"
+                @preview="wb.openImageViewer(wb.assetImageSrc(s), `${s.location} 场景图`)"
+                @thumb-error="wb.thumbFallback($event, wb.assetImageSrc(s))"
+              />
             </div>
             </template>
 
@@ -226,63 +165,36 @@ const wb = useEpisodeWorkbenchInject()
               <button class="asset-add-btn" @click="wb.openAssetCreate('prop')"><Plus :size="11" /> 新增</button>
             </div>
             <div v-if="wb.propItems.length" class="asset-grid">
-              <div
+              <AssetCard
                 v-for="p in wb.propItems"
                 :key="p.id"
-                class="card asset-card asset-click-card prop-card"
-                :class="{ 'is-selected': wb.assetSelectMode && wb.isAssetSelected('prop', p.id) }"
-                tabindex="0"
-                role="button"
+                type="prop"
+                :title="p.name"
+                :tag="p.type || '道具'"
+                :meta-lines="[p.description || '暂无描述']"
+                final-prompt-label="最终提示词 · 白底单品"
+                :final-prompt="p.final_prompt || p.finalPrompt || ''"
+                final-prompt-placeholder="首次生成图片时由提示词 Agent 自动生成（白底单品）"
+                :image-src="wb.assetImageSrc(p)"
+                :thumb-src="wb.thumbOf(wb.assetImageSrc(p))"
+                :has-image="!!(p.image_url || p.imageUrl)"
+                :pending="wb.isPendingPropImage(p.id)"
+                :uploading="wb.isUploadingAsset('prop', p.id)"
+                :download-href="wb.assetImageSrc(p)"
+                :download-name="wb.assetDownloadName('prop', p)"
+                download-title="下载道具图"
+                upload-title="上传道具图"
+                delete-title="从本集移除道具"
+                :selected="wb.isAssetSelected('prop', p.id)"
+                :select-mode="wb.assetSelectMode"
                 @click="wb.onAssetCardClick('prop', p)"
-                @keydown.enter.prevent="wb.onAssetCardClick('prop', p)"
-                @keydown.space.prevent="wb.onAssetCardClick('prop', p)"
-              >
-                <span
-                  v-if="wb.assetSelectMode"
-                  class="shot-check asset-check"
-                  :class="{ on: wb.isAssetSelected('prop', p.id) }"
-                >
-                  <svg v-if="wb.isAssetSelected('prop', p.id)" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                </span>
-                <button v-else class="asset-del-btn" title="从本集移除道具" @click.stop="wb.askDeleteAsset('prop', p)"><X :size="11" /></button>
-                <div class="asset-cover wide">
-                  <img
-                    v-if="p.image_url || p.imageUrl"
-                    :src="wb.thumbOf(wb.assetImageSrc(p))"
-                    class="previewable-image"
-                    loading="lazy"
-                    @error="wb.thumbFallback($event, wb.assetImageSrc(p))"
-                    @click.stop="wb.assetSelectMode ? wb.toggleAssetSelect('prop', p.id) : wb.openImageViewer(wb.assetImageSrc(p), `${p.name} 道具图`)"
-                  />
-                  <div v-else class="asset-cover-empty">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-                  </div>
-                  <span class="asset-cover-badge" :class="(p.image_url || p.imageUrl) ? 'is-ready' : (wb.isPendingPropImage(p.id) ? 'is-pending' : '')">{{ (p.image_url || p.imageUrl) ? '已生成' : (wb.isPendingPropImage(p.id) ? '生成中' : '待生成') }}</span>
-                </div>
-                <div class="asset-body">
-                  <div class="prop-name-row">
-                    <span class="asset-name" :title="p.name">{{ p.name }}</span>
-                    <span class="tag">{{ p.type || '道具' }}</span>
-                  </div>
-                  <div class="asset-meta asset-desc dim" :title="p.description || ''">{{ p.description || '暂无描述' }}</div>
-                  <div class="asset-meta asset-final" :class="{ dim: !(p.final_prompt || p.finalPrompt) }" :title="p.final_prompt || p.finalPrompt || ''">
-                    <span class="afp-label">最终提示词 · 白底单品</span>
-                    {{ p.final_prompt || p.finalPrompt || '首次生成图片时由提示词 Agent 自动生成（白底单品）' }}
-                  </div>
-                </div>
-                <div class="asset-foot">
-                  <span :class="['dot', (p.image_url || p.imageUrl) && 'ok', wb.isPendingPropImage(p.id) && 'pending']" />
-                  <button class="btn btn-sm ml-auto" title="上传道具图" :disabled="wb.isUploadingAsset('prop', p.id)" @click.stop="wb.uploadAssetImage('prop', p.id)">
-                    <Loader2 v-if="wb.isUploadingAsset('prop', p.id)" :size="11" class="animate-spin" />
-                    <svg v-else width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                    上传
-                  </button>
-                  <button class="btn btn-sm" :disabled="wb.isPendingPropImage(p.id)" @click.stop="wb.genPropImg(p.id)">
-                    <Loader2 v-if="wb.isPendingPropImage(p.id)" :size="11" class="animate-spin" />
-                    {{ (p.image_url || p.imageUrl) ? '重绘' : (wb.isPendingPropImage(p.id) ? '生成中' : '生成') }}
-                  </button>
-                </div>
-              </div>
+                @delete="wb.askDeleteAsset('prop', p)"
+                @toggle-select="wb.toggleAssetSelect('prop', p.id)"
+                @generate="wb.genPropImg(p.id)"
+                @upload="wb.uploadAssetImage('prop', p.id)"
+                @preview="wb.openImageViewer(wb.assetImageSrc(p), `${p.name} 道具图`)"
+                @thumb-error="wb.thumbFallback($event, wb.assetImageSrc(p))"
+              />
             </div>
             <div v-else class="asset-props-empty">本集暂无涉及事态发展的关键道具</div>
             </template>

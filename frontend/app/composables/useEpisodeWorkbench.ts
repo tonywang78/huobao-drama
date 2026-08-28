@@ -645,6 +645,16 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     return `/${raw}`
   }
 
+  function assetDownloadName(type, item) {
+    const src = assetImageSrc(item)
+    if (!src) return ''
+    const ext = src.match(/\.(png|jpe?g|webp|gif)(\?|$)/i)?.[1]?.toLowerCase() || 'png'
+    const base = (type === 'scene' ? item?.location : item?.name) || 'asset'
+    const safe = String(base).replace(/[\\/:*?"<>|]/g, '_').trim() || 'asset'
+    const prefix = { character: '角色', scene: '场景', prop: '道具' }[type] || '资产'
+    return `${prefix}-${safe}.${ext}`
+  }
+
   function assetDetailTitle(detail) {
     if (!detail?.item) return ''
     if (detail.type === 'character') return detail.item.name || '未命名角色'
@@ -2591,7 +2601,7 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     exportMerges, exportSelectedReadyIds, exportReadyIds, isExportSelected, toggleExportSelect, toggleSelectAllExport,
     loadExportMerges, doMerge, shotVidCount, hasVid, getVideoUrl, formatHistoryTime,
     assetDetail, assetDetailDraft, assetImageHistory, assetPreviewImageUrl, assetDetailDisplayUrl,
-    openAssetDetail, closeAssetDetail, saveAssetDetail, assetTypeLabel, assetDetailTitle, assetImageSrc,
+    openAssetDetail, closeAssetDetail, saveAssetDetail, assetTypeLabel, assetDetailTitle, assetImageSrc, assetDownloadName,
     characterAppearanceValue, characterStylingValue, characterVisualSummary, sceneDescriptionValue, sceneLightingValue,
     isCurrentAssetImage, previewAssetHistoryImage, setAssetAsMainImage, removeAssetHistoryImage,
     assetCreate, assetCreateDraft, assetCreateTypeLabel, openAssetCreate, saveAssetCreate,

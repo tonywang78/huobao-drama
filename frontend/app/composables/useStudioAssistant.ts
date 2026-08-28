@@ -491,17 +491,45 @@ export function useStudioAssistant() {
     return next
   }
 
+  function mergeArtifactPair(a, b) {
+    const left = normalizeArtifact(a)
+    const right = normalizeArtifact(b)
+    const leftDone = left.url && left.status !== 'processing' && left.status !== 'failed'
+    const rightDone = right.url && right.status !== 'processing' && right.status !== 'failed'
+    if (leftDone || rightDone) {
+      const base = rightDone ? { ...left, ...right } : { ...right, ...left }
+      return normalizeArtifact({ ...base, status: 'done' })
+    }
+    return normalizeArtifact({ ...left, ...right })
+  }
+
+  function dedupeArtifacts(list) {
+    const merged = new Map()
+    for (const art of (list || []).map(normalizeArtifact)) {
+      const tid = artifactTaskId(art)
+      if (!tid) continue
+      const prev = merged.get(tid)
+      merged.set(tid, prev ? mergeArtifactPair(prev, art) : art)
+    }
+    const seen = new Set()
+    const out = []
+    for (const art of (list || []).map(normalizeArtifact)) {
+      const tid = artifactTaskId(art)
+      if (!tid) {
+        out.push(art)
+        continue
+      }
+      if (seen.has(tid)) continue
+      seen.add(tid)
+      out.push(merged.get(tid))
+    }
+    return out
+  }
+
   function mergeIncomingArtifacts(existing, incoming) {
     const prev = (existing || []).map(normalizeArtifact)
-    if (!incoming?.length) return prev
-    return incoming.map(normalizeArtifact).map(art => {
-      const tid = artifactTaskId(art)
-      const old = prev.find(a => artifactTaskId(a) === tid)
-      if (old?.url && (old.status === 'done' || old.status === 'completed')) {
-        return normalizeArtifact({ ...art, ...old, status: 'done' })
-      }
-      return art
-    })
+    if (!incoming?.length) return dedupeArtifacts(prev)
+    return dedupeArtifacts([...prev, ...incoming.map(normalizeArtifact)])
   }
 
   function syncArtifactInMessage(_msg, taskId, patch) {
@@ -510,11 +538,11 @@ export function useStudioAssistant() {
     if (idx < 0) return null
     let saved = null
     const next = patchMessageAt(idx, (cur) => {
-      const list = (cur.content?.artifacts || []).map(a => (
+      const list = dedupeArtifacts((cur.content?.artifacts || []).map(a => (
         artifactTaskId(a) === nid
           ? normalizeArtifact({ ...a, ...patch, taskId: nid })
           : normalizeArtifact(a)
-      ))
+      )))
       saved = list
       return { ...cur, content: { ...cur.content, artifacts: list } }
     })
@@ -535,7 +563,7 @@ export function useStudioAssistant() {
   function normalizeMessage(m) {
     const content = m.content && typeof m.content === 'object' ? m.content : { text: m.content || '' }
     if (Array.isArray(content.artifacts)) {
-      content.artifacts = content.artifacts.map(normalizeArtifact)
+      content.artifacts = dedupeArtifacts(content.artifacts)
     }
     return {
       id: m.id,

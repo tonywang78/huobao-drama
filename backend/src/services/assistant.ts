@@ -798,7 +798,6 @@ function flattenToolResultEntries(result: any): any[] {
   if (Array.isArray(result?.steps)) {
     for (const step of result.steps) {
       push(step?.toolResults)
-      push(step?.toolCalls)
     }
   }
   if (Array.isArray(result?.messages)) {
@@ -807,6 +806,18 @@ function flattenToolResultEntries(result: any): any[] {
     }
   }
   return entries
+}
+
+function dedupeImageTasks(tasks: Array<{ task_id: number; kind: string }>) {
+  const seen = new Set<number>()
+  const out: Array<{ task_id: number; kind: string }> = []
+  for (const task of tasks) {
+    const id = Number(task.task_id)
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    out.push({ task_id: id, kind: task.kind || 'image' })
+  }
+  return out
 }
 
 export function collectToolOutcomes(result: any) {
@@ -839,7 +850,13 @@ export function collectToolOutcomes(result: any) {
     return { toolName, result: parsed }
   })
 
-  return { imageTasks, proposals, didWrite, toolCalls: normalizedCalls, toolResults: normalizedResults }
+  return {
+    imageTasks: dedupeImageTasks(imageTasks),
+    proposals,
+    didWrite,
+    toolCalls: normalizedCalls,
+    toolResults: normalizedResults,
+  }
 }
 
 async function breakdownMessage(episodeId: number) {

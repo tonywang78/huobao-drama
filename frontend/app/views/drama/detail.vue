@@ -200,118 +200,34 @@
               <span class="group-count">{{ g.items.length }}</span>
             </div>
 
-            <!-- 角色：横向布局卡片（头像 + 样貌/妆造 + 三视图提示词） -->
-            <div v-if="g.kindKey === 'character'" class="character-asset-grid">
-              <article
-                v-for="m in g.items"
-                :key="'character-' + m.id"
-                class="card character-asset-card"
-                tabindex="0"
-                role="button"
-                @click="openEdit(m)"
-                @keydown.enter.prevent="openEdit(m)"
-                @keydown.space.prevent="openEdit(m)"
-              >
-                <button class="asset-del-btn" type="button" title="删除素材" @click.stop="askDeleteMaterial(m)">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
-                <div class="character-asset-main">
-                  <div class="character-asset-overview">
-                    <div class="character-portrait">
-                      <img v-if="matHasImage(m)" :src="thumbOf(assetSrc(m))" class="previewable-image" loading="lazy" @error="thumbFallback($event, assetSrc(m))" @click.stop="openAssetViewer(m)" />
-                      <div v-else class="character-portrait-empty">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                      </div>
-                      <span class="asset-cover-badge" :class="matHasImage(m) ? 'is-ready' : (isPending(m) ? 'is-pending' : '')">
-                        {{ matHasImage(m) ? '形象已生成' : (isPending(m) ? '形象生成中' : '形象待生成') }}
-                      </span>
-                    </div>
-                    <div class="character-asset-head">
-                      <div class="character-title-block">
-                        <div class="character-name-row">
-                          <strong class="character-name">{{ m.name }}</strong>
-                          <span class="tag">{{ m.role || '角色' }}</span>
-                        </div>
-                        <div class="character-visual-summary" :title="matDesc(m)">
-                          <span>样貌：{{ m.appearance || '待补充' }}</span>
-                          <span>妆造：{{ m.styling || '待补充' }}</span>
-                        </div>
-                      </div>
-                      <button class="btn btn-sm character-gen-btn" type="button" :disabled="isPending(m)" @click.stop="generateMaterial(m)">
-                        <span v-if="isPending(m)" class="ring-spinner sm"></span>
-                        {{ matHasImage(m) ? '重绘' : (isPending(m) ? '生成中' : '生成') }}
-                      </button>
-                      <button class="btn btn-sm" type="button" title="上传角色形象图" :disabled="isUploading(m)" @click.stop="uploadMaterial(m)">
-                        <span v-if="isUploading(m)" class="ring-spinner sm"></span>
-                        <svg v-else width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                        上传
-                      </button>
-                    </div>
-                  </div>
-                  <div class="asset-final-prompt" :title="m.finalPrompt || ''">
-                    <span class="afp-label">最终提示词 · 三视图</span>
-                    <span :class="['afp-text', !m.finalPrompt && 'dim']">{{ m.finalPrompt || '首次生成形象时由提示词 Agent 自动生成' }}</span>
-                  </div>
-                </div>
-              </article>
-            </div>
-
-            <!-- 场景 / 道具：竖向布局卡片（封面 + 描述/光影/类型 + 最终提示词 + 底部状态） -->
-            <div v-else class="asset-grid">
-              <div
+            <div class="asset-grid">
+              <AssetCard
                 v-for="m in g.items"
                 :key="g.kindKey + '-' + m.id"
-                :class="['card', 'asset-card', 'asset-click-card', g.kindKey === 'prop' ? 'prop-card' : '']"
-                tabindex="0"
-                role="button"
+                :type="g.kindKey"
+                :title="matCardTitle(m)"
+                :tag="matCardTag(m)"
+                :meta-lines="matCardMetaLines(m)"
+                :final-prompt-label="matFinalPromptLabel(m)"
+                :final-prompt="m.finalPrompt || ''"
+                :final-prompt-placeholder="matFinalPromptPlaceholder(m)"
+                :image-src="assetSrc(m)"
+                :thumb-src="thumbOf(assetSrc(m))"
+                :has-image="matHasImage(m)"
+                :pending="isPending(m)"
+                :uploading="isUploading(m)"
+                :download-href="assetSrc(m)"
+                :download-name="assetDownloadName(m)"
+                :download-title="`下载${m.kind}图`"
+                :upload-title="`上传${m.kind}图`"
+                :delete-title="`删除${m.kind}`"
                 @click="openEdit(m)"
-                @keydown.enter.prevent="openEdit(m)"
-                @keydown.space.prevent="openEdit(m)"
-              >
-                <button class="asset-del-btn" type="button" title="删除素材" @click.stop="askDeleteMaterial(m)">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
-                <div class="asset-cover wide">
-                  <img v-if="matHasImage(m)" :src="thumbOf(assetSrc(m))" class="previewable-image" loading="lazy" @error="thumbFallback($event, assetSrc(m))" @click.stop="openAssetViewer(m)" />
-                  <div v-else class="asset-cover-empty">
-                    <svg v-if="g.kindKey === 'scene'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                    <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-                  </div>
-                  <span class="asset-cover-badge" :class="matHasImage(m) ? 'is-ready' : (isPending(m) ? 'is-pending' : '')">
-                    {{ matHasImage(m) ? '已生成' : (isPending(m) ? '生成中' : '待生成') }}
-                  </span>
-                </div>
-                <div class="asset-body">
-                  <template v-if="g.kindKey === 'scene'">
-                    <div class="asset-name" :title="m.location">{{ m.location }}</div>
-                    <div class="asset-meta asset-desc dim" :title="matDesc(m)">{{ matDesc(m) || '场景描述待补充' }}</div>
-                    <div v-if="m.lighting" class="asset-meta asset-light dim" :title="m.lighting">光照 · {{ m.lighting }}</div>
-                  </template>
-                  <template v-else>
-                    <div class="prop-name-row">
-                      <span class="asset-name" :title="m.name">{{ m.name }}</span>
-                      <span class="tag">{{ m.type || '道具' }}</span>
-                    </div>
-                    <div class="asset-meta asset-desc dim" :title="m.description || ''">{{ m.description || '暂无描述' }}</div>
-                  </template>
-                  <div class="asset-meta asset-final" :class="{ dim: !m.finalPrompt }" :title="m.finalPrompt || ''">
-                    <span class="afp-label">{{ g.kindKey === 'scene' ? '最终提示词 · 固定视角' : '最终提示词 · 白底单品' }}</span>
-                    {{ m.finalPrompt || (g.kindKey === 'scene' ? '首次生成图片时由提示词 Agent 自动生成（前景/中景/后景）' : '首次生成图片时由提示词 Agent 自动生成（白底单品）') }}
-                  </div>
-                </div>
-                <div class="asset-foot">
-                  <span :class="['dot', matHasImage(m) && 'ok', isPending(m) && 'pending']" />
-                  <button class="btn btn-sm ml-auto" type="button" title="上传图片" :disabled="isUploading(m)" @click.stop="uploadMaterial(m)">
-                    <span v-if="isUploading(m)" class="ring-spinner sm"></span>
-                    <svg v-else width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                    上传
-                  </button>
-                  <button class="btn btn-sm" type="button" :disabled="isPending(m)" @click.stop="generateMaterial(m)">
-                    <span v-if="isPending(m)" class="ring-spinner sm"></span>
-                    {{ matHasImage(m) ? '重绘' : (isPending(m) ? '生成中' : '生成') }}
-                  </button>
-                </div>
-              </div>
+                @delete="askDeleteMaterial(m)"
+                @generate="generateMaterial(m)"
+                @upload="uploadMaterial(m)"
+                @preview="openAssetViewer(m)"
+                @thumb-error="thumbFallback($event, assetSrc(m))"
+              />
             </div>
           </template>
         </template>
@@ -809,6 +725,15 @@ function assetSrc(m) {
   if (!raw) return ''
   return /^https?:\/\//i.test(raw) || raw.startsWith('/') ? raw : `/${raw}`
 }
+function assetDownloadName(m) {
+  const src = assetSrc(m)
+  if (!src) return ''
+  const ext = src.match(/\.(png|jpe?g|webp|gif)(\?|$)/i)?.[1]?.toLowerCase() || 'png'
+  const base = (m.kindKey === 'scene' ? m.location : m.name) || 'asset'
+  const safe = String(base).replace(/[\\/:*?"<>|]/g, '_').trim() || 'asset'
+  const prefix = { character: '角色', scene: '场景', prop: '道具' }[m.kindKey] || '资产'
+  return `${prefix}-${safe}.${ext}`
+}
 function matCreatedAt(m) { return m.created_at || m.updated_at || m.createdAt || m.updatedAt }
 function matDesc(m) {
   if (m.kindKey === 'character') return m.appearance || m.description || ''
@@ -819,6 +744,37 @@ function tagClass(kindKey) {
   return kindKey === 'character' ? 'is-character' : kindKey === 'scene' ? 'is-scene' : 'is-prop'
 }
 function tabLabel(v) { return assetTabs.find(t => t.value === v)?.label || '' }
+
+function matCardTitle(m) {
+  if (m.kindKey === 'scene') return m.location || '未命名场景'
+  return m.name || '未命名'
+}
+function matCardTag(m) {
+  if (m.kindKey === 'character') return m.role || '角色'
+  if (m.kindKey === 'prop') return m.type || '道具'
+  return ''
+}
+function matCardMetaLines(m) {
+  if (m.kindKey === 'character') {
+    return [`样貌：${m.appearance || '待补充'}`, `妆造：${m.styling || '待补充'}`]
+  }
+  if (m.kindKey === 'scene') {
+    const lines = [matDesc(m) || '场景描述待补充']
+    if (m.lighting) lines.push(`光照 · ${m.lighting}`)
+    return lines
+  }
+  return [m.description || '暂无描述']
+}
+function matFinalPromptLabel(m) {
+  if (m.kindKey === 'character') return '最终提示词 · 三视图'
+  if (m.kindKey === 'scene') return '最终提示词 · 固定视角'
+  return '最终提示词 · 白底单品'
+}
+function matFinalPromptPlaceholder(m) {
+  if (m.kindKey === 'character') return '首次生成形象时由提示词 Agent 自动生成'
+  if (m.kindKey === 'scene') return '首次生成图片时由提示词 Agent 自动生成（前景/中景/后景）'
+  return '首次生成图片时由提示词 Agent 自动生成（白底单品）'
+}
 
 const materials = computed(() => {
   const d = drama.value
@@ -1350,12 +1306,11 @@ onMounted(load)
 /* ===== 素材库 ===== */
 .asset-filter { margin-bottom: 16px; }
 
-.asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; align-items: stretch; }
-.character-asset-grid {
+.asset-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 260px));
-  justify-content: start;
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  align-items: stretch;
 }
 /* 分组标题：角色 / 场景 / 道具，彩色左条 + 图标 + 数量 */
 .asset-group-head {
@@ -1389,12 +1344,18 @@ onMounted(load)
 .asset-group-head.is-prop { border-left-color: #b45309; background: rgba(180,83,9,0.1); color: #b45309; }
 .asset-group-head.is-prop .group-icon { color: #b45309; }
 .asset-card {
-  display: flex; flex-direction: column; overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
   transition: transform 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out), border-color 0.18s var(--ease-out);
 }
-.asset-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
-.asset-click-card,
-.character-asset-card {
+.asset-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lift);
+  border-color: var(--border-strong);
+}
+.asset-click-card {
   cursor: pointer;
   position: relative;
 }
@@ -1417,97 +1378,32 @@ onMounted(load)
   transition: opacity 0.15s, background 0.15s;
 }
 .asset-click-card:hover .asset-del-btn,
-.character-asset-card:hover .asset-del-btn,
 .asset-del-btn:focus-visible {
   opacity: 1;
 }
 .asset-del-btn:hover { background: var(--action-danger, #c44); }
-.asset-click-card:focus-visible,
-.character-asset-card:focus-visible {
+.asset-click-card:focus-visible {
   outline: none;
   border-color: var(--accent-glow);
   box-shadow: 0 0 0 3px var(--button-focus), var(--shadow-panel);
 }
-.character-asset-card {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  min-height: 0;
-  transition: transform 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out), border-color 0.18s var(--ease-out);
-}
-.character-asset-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lift);
-  border-color: var(--border-strong);
-}
-.character-portrait {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  align-self: start;
-  margin: 0;
-  border: 1px solid var(--surface-outline);
-  border-radius: var(--radius);
-  background: var(--bg-2);
-  overflow: hidden;
-}
-.character-portrait img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-.character-portrait-empty {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-3);
-}
-.character-asset-main {
-  min-width: 0;
-  width: 100%;
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.character-asset-overview {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.character-asset-head {
+.asset-head-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   min-width: 0;
 }
-.character-title-block {
+.asset-head-row .asset-name {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex: 1 1 auto;
+  word-break: keep-all;
 }
-.character-name-row {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  flex-wrap: wrap;
-}
-.character-name {
-  font-size: 13px;
-  line-height: 1.25;
-  color: var(--text-0);
-}
-.character-gen-btn { flex-shrink: 0; align-self: center; }
 .asset-final-prompt {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  margin-top: auto;
   padding-top: 7px;
   border-top: 1px solid var(--border);
   font-size: 10.5px;
@@ -1528,31 +1424,7 @@ onMounted(load)
   color: var(--text-2);
 }
 .afp-text.dim { color: var(--text-3); }
-.asset-final {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  word-break: break-word;
-  color: var(--text-2);
-}
-.asset-final .afp-label { margin-right: 4px; }
-.character-visual-summary {
-  max-width: 100%;
-  display: flex;
-  gap: 8px;
-  overflow: hidden;
-  color: var(--text-3);
-  font-size: 10.5px;
-  line-height: 1.45;
-  white-space: nowrap;
-}
-.character-visual-summary span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.asset-cover { position: relative; aspect-ratio: 1; background: var(--bg-2); overflow: hidden; }
+.asset-cover { position: relative; flex-shrink: 0; aspect-ratio: 1; background: var(--bg-2); overflow: hidden; }
 .asset-cover.wide { aspect-ratio: 16/9; }
 .asset-cover img { width: 100%; height: 100%; object-fit: cover; }
 .previewable-image { cursor: zoom-in; transition: transform 0.18s var(--ease-out), filter 0.18s var(--ease-out); }
@@ -1583,12 +1455,13 @@ onMounted(load)
 }
 .asset-cover-empty { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text-3); }
 .asset-body {
-  flex: 1;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 6px;
   padding: 9px 11px 8px;
   min-width: 0;
+  min-height: 0;
 }
 .asset-name {
   font-size: 13px;
@@ -1602,7 +1475,7 @@ onMounted(load)
 .asset-desc {
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   overflow: hidden;
   word-break: break-word;
 }
@@ -1611,17 +1484,29 @@ onMounted(load)
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.asset-foot { display: flex; align-items: center; gap: 4px; padding: 7px 11px; border-top: 1px solid var(--border); }
-.prop-name-row {
+.asset-foot {
+  flex-shrink: 0;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+}
+.asset-foot-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 4px;
+  width: 100%;
 }
-.prop-name-row .asset-name { min-width: 0; }
-.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--bg-3); flex-shrink: 0; }
-.dot.ok { background: var(--success); }
-.dot.pending { background: var(--accent); }
+.asset-foot-actions > .btn:not(.asset-foot-icon-btn) {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 8px;
+  font-size: 11px;
+}
+.asset-foot-icon-btn {
+  flex: 0 0 28px;
+  width: 28px;
+  min-width: 28px;
+  padding: 0;
+}
 .ring-spinner {
   width: 22px; height: 22px;
   border: 2.5px solid var(--border);
