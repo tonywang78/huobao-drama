@@ -16,7 +16,10 @@ import {
   getImageConfigId,
   getImageModelOverride,
   getImg2imgConfigId,
+  getAssistantRefs,
+  getAssistantAttachments,
 } from '../context.js'
+import { collectRefImageUrls } from '../../services/assistant.js'
 
 const PIPELINE_ACTIONS = ['script_rewriter', 'extractor', 'storyboard_breaker', 'video_prompts'] as const
 
@@ -200,6 +203,55 @@ async function resolveRefUrls(params: {
   return [...new Set(urls.filter(Boolean))]
 }
 
+async function resolveToolReferenceUrls(
+  context: { requestContext?: unknown } | undefined,
+  dramaId: number,
+  referenceUrls?: string[],
+  referenceAssets?: { type: 'character' | 'scene' | 'prop'; id: number }[],
+): Promise<string[]> {
+  let refs = await resolveRefUrls({
+    dramaId,
+    referenceUrls,
+    referenceAssetIds: referenceAssets,
+  })
+  if (refs.length) return refs
+
+  const ctxRefs = getAssistantRefs(context?.requestContext as any)
+  refs = await collectRefImageUrls(ctxRefs, dramaId)
+  if (refs.length) return refs
+
+  const attachments = getAssistantAttachments(context?.requestContext as any)
+  if (attachments.length) {
+    return [...new Set(attachments.map(a => a.url).filter(Boolean))]
+  }
+  return []
+}
+
+async function enqueueImageWithRefs(
+  context: { requestContext?: unknown } | undefined,
+  dramaId: number,
+  prompt: string,
+  referenceUrls?: string[],
+  referenceAssets?: { type: 'character' | 'scene' | 'prop'; id: number }[],
+): Promise<number> {
+  const refs = await resolveToolReferenceUrls(context, dramaId, referenceUrls, referenceAssets)
+  if (refs.length) {
+    return generateImageEdit({
+      dramaId,
+      prompt,
+      model: getImageModelOverride(context?.requestContext as any),
+      configId: getImg2imgConfigId(context?.requestContext as any),
+      referenceImages: refs,
+    })
+  }
+  return generateImage({
+    dramaId,
+    prompt,
+    model: getImageModelOverride(context?.requestContext as any),
+    configId: getImageConfigId(context?.requestContext as any),
+  })
+}
+
 const generateImageTool = createTool({
   id: 'generate_image',
   description: '根据提示词生成一张图片（不绑定资产）。可附带参考图 URL 或资产 ID。立即返回 task_id，前端轮询完成后出图。',
@@ -215,18 +267,7 @@ const generateImageTool = createTool({
     const dramaId = getDramaId(context?.requestContext)
     const missing = needDrama(dramaId)
     if (missing) return missing
-    const refs = await resolveRefUrls({
-      dramaId: dramaId!,
-      referenceUrls: reference_urls,
-      referenceAssetIds: reference_assets,
-    })
-    const taskId = await generateImage({
-      dramaId: dramaId!,
-      prompt,
-      model: getImageModelOverride(context?.requestContext),
-      configId: getImageConfigId(context?.requestContext),
-      referenceImages: refs.length ? refs : undefined,
-    })
+    const taskId = await enqueueImageWithRefs(context, dramaId!, prompt, reference_urls, reference_assets)
     return { status: 'processing', task_id: taskId, kind: 'image' }
   },
 })
@@ -246,11 +287,7 @@ const editImageTool = createTool({
     const dramaId = getDramaId(context?.requestContext)
     const missing = needDrama(dramaId)
     if (missing) return missing
-    const refs = await resolveRefUrls({
-      dramaId: dramaId!,
-      referenceUrls: reference_urls,
-      referenceAssetIds: reference_assets,
-    })
+    const refs = await resolveToolReferenceUrls(context, dramaId!, reference_urls, reference_assets)
     if (!refs.length) return { error: '图生图需要至少一张参考图（引用资产或上传图片）' }
     const taskId = await generateImageEdit({
       dramaId: dramaId!,

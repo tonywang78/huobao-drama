@@ -122,20 +122,19 @@ export function readImageAsDataUrl(relativePath: string): string {
   return `data:${mimeType};base64,${buffer.toString('base64')}`
 }
 
-export async function readImageAsCompressedDataUrl(
-  relativePath: string,
+async function compressImageBuffer(
+  input: Buffer,
   options: {
     maxWidth?: number
     maxHeight?: number
     quality?: number
   } = {},
 ): Promise<string> {
-  const filePath = getAbsolutePath(relativePath)
   const maxWidth = options.maxWidth ?? 768
   const maxHeight = options.maxHeight ?? 768
   const quality = options.quality ?? 68
 
-  const resized = sharp(filePath).rotate().resize({
+  const resized = sharp(input).rotate().resize({
     width: maxWidth,
     height: maxHeight,
     fit: 'inside',
@@ -145,8 +144,34 @@ export async function readImageAsCompressedDataUrl(
   const output = metadata.hasAlpha
     ? await resized.flatten({ background: '#ffffff' }).jpeg({ quality, mozjpeg: true }).toBuffer()
     : await resized.jpeg({ quality, mozjpeg: true }).toBuffer()
-  const mimeType = 'image/jpeg'
-  return `data:${mimeType};base64,${output.toString('base64')}`
+  return `data:image/jpeg;base64,${output.toString('base64')}`
+}
+
+export async function readImageAsCompressedDataUrl(
+  relativePath: string,
+  options: {
+    maxWidth?: number
+    maxHeight?: number
+    quality?: number
+  } = {},
+): Promise<string> {
+  const filePath = getAbsolutePath(relativePath)
+  return compressImageBuffer(fs.readFileSync(filePath), options)
+}
+
+/** 远程图片 URL → 压缩 data URL（Gemini 等只接受 inline_data） */
+export async function fetchImageAsCompressedDataUrl(
+  url: string,
+  options: {
+    maxWidth?: number
+    maxHeight?: number
+    quality?: number
+  } = {},
+): Promise<string> {
+  const resp = await fetch(url, { signal: AbortSignal.timeout(60_000) })
+  if (!resp.ok) throw new Error(`Download failed: ${resp.status}`)
+  const buf = Buffer.from(await resp.arrayBuffer())
+  return compressImageBuffer(buf, options)
 }
 
 export function parseDataUrl(dataUrl: string): { mimeType: string; data: string } | null {

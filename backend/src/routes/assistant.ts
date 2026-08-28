@@ -15,6 +15,8 @@ import {
   collectToolOutcomes,
   enrichRefs,
   tryDirectImageEdit,
+  toolCallUsedReferenceImages,
+  collectRefImageUrls,
   createSnippet,
   deleteSnippet,
   getOrCreateThread,
@@ -201,6 +203,8 @@ app.post('/chat', async (c) => {
     img2imgConfigId: body.img2img_config_id || undefined,
     imageModelOverride: body.image_model || undefined,
     uiContext: { ...ui, drama_id: dramaId, episode_id: episodeId },
+    assistantRefs: refs,
+    assistantAttachments: attachments,
   })
 
   const messages = await toModelMessages(
@@ -235,7 +239,11 @@ app.post('/chat', async (c) => {
       }
 
       let outcomes = collectToolOutcomes(rawResult)
-      if (!outcomes.imageTasks.length) {
+      const userRefUrls = dramaId ? await collectRefImageUrls(refs, dramaId) : []
+      const userHasImageRefs = userRefUrls.length > 0 || attachments.length > 0
+      const toolUsedRefs = toolCallUsedReferenceImages(outcomes.toolCalls)
+      const needsRefFallback = userHasImageRefs && !toolUsedRefs
+      if (!outcomes.imageTasks.length || needsRefFallback) {
         const direct = await tryDirectImageEdit({
           text,
           refs,
@@ -250,7 +258,8 @@ app.post('/chat', async (c) => {
             ...outcomes,
             imageTasks: [{ task_id: direct.task_id, kind: direct.kind }],
             toolCalls: [
-              ...outcomes.toolCalls,
+              ...outcomes.toolCalls.filter((tc: { toolName?: string | null }) =>
+                tc.toolName !== 'generate_image' && tc.toolName !== 'edit_image'),
               {
                 toolName: 'edit_image',
                 args: { prompt: direct.prompt, reference_urls: direct.reference_urls },
@@ -259,8 +268,8 @@ app.post('/chat', async (c) => {
           }
           if (/task_id:\s*\d+/i.test(textOut)) {
             textOut = textOut.replace(/task_id:\s*\d+/gi, `task_id: ${direct.task_id}`)
-          } else if (!textOut.trim()) {
-            textOut = `已开始改图，完成后会出现在这条消息里。（task_id: ${direct.task_id}）`
+          } else if (!textOut.trim() || needsRefFallback) {
+            textOut = `已开始基于参考图生成，完成后会出现在这条消息里。（task_id: ${direct.task_id}）`
           }
         }
       }

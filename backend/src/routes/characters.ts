@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm'
 import { db, getInsertId, schema } from '../db/index.js'
 import { success, created, badRequest, notFound, now } from '../utils/response.js'
 import { toSnakeCase } from '../utils/transform.js'
-import { generateImage } from '../services/generation.js'
+import { generateImage, generateImageEdit } from '../services/generation.js'
 import { getDramaStylePrompt } from '../services/style-preset.js'
 import { ensureCharacterFinalPrompt } from '../services/final-prompt.js'
 import { hardDeleteCharacter } from '../utils/asset-hard-delete.js'
@@ -117,6 +117,42 @@ app.post('/:id/generate-image', async (c) => {
     return success(c, { image_generation_id: genId })
   } catch (err: any) {
     logTaskError('CharacterImage', 'generate', { characterId: id, error: err.message })
+    return badRequest(c, err.message)
+  }
+})
+
+// POST /characters/:id/edit-image — 基于当前角色图 + 修改提示词改图（img2img）
+app.post('/:id/edit-image', async (c) => {
+  const id = Number(c.req.param('id'))
+  const body = await c.req.json()
+  const [char] = await db.select().from(schema.characters).where(eq(schema.characters.id, id))
+  if (!char) return badRequest(c, 'Character not found')
+  if (!body.episode_id) return badRequest(c, 'episode_id is required')
+
+  const editPrompt = String(body.edit_prompt ?? body.editPrompt ?? '').trim()
+  if (!editPrompt) return badRequest(c, 'edit_prompt is required')
+
+  const sourceImage = char.imageUrl || char.localPath
+  if (!sourceImage) return badRequest(c, '角色尚无图片，请先生成或上传角色图')
+
+  const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, Number(body.episode_id)))
+  if (!ep) return badRequest(c, 'Episode not found')
+
+  try {
+    logTaskStart('CharacterImage', 'edit', { characterId: id, episodeId: ep.id, dramaId: char.dramaId })
+    const genId = await generateImageEdit({
+      characterId: id,
+      dramaId: char.dramaId,
+      prompt: editPrompt,
+      referenceImages: [sourceImage],
+      model: body.model,
+      size: CHARACTER_IMAGE_SIZE,
+      configId: body.config_id ?? ep.img2imgConfigId ?? undefined,
+    })
+    logTaskSuccess('CharacterImage', 'edit', { characterId: id, generationId: genId })
+    return success(c, { image_generation_id: genId })
+  } catch (err: any) {
+    logTaskError('CharacterImage', 'edit', { characterId: id, error: err.message })
     return badRequest(c, err.message)
   }
 })

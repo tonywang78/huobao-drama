@@ -511,9 +511,22 @@ function refsHaveImageSource(refs?: AssistantRef[]): boolean {
   return (refs || []).some(r => {
     const n = normalizeRef(r)
     if (n.category === 'generated' && !!n.image_url) return true
-    if (n.category === 'asset' && n.id) return true
+    if (n.category === 'asset' && n.id && !!n.image_url) return true
     return false
   })
+}
+
+export function toolCallUsedReferenceImages(toolCalls: Array<{ toolName?: string | null; args?: unknown }>): boolean {
+  for (const call of toolCalls) {
+    const name = call.toolName || ''
+    if (name !== 'generate_image' && name !== 'edit_image') continue
+    const args = (call.args && typeof call.args === 'object') ? call.args as Record<string, unknown> : {}
+    const urls = args.reference_urls
+    const assets = args.reference_assets
+    if (Array.isArray(urls) && urls.length) return true
+    if (Array.isArray(assets) && assets.length) return true
+  }
+  return false
 }
 
 /** 从库中读取资产当前图片（不信任前端缓存的 image_url） */
@@ -704,7 +717,7 @@ function stripAtTokens(text: string, refs?: AssistantRef[]): string {
   return out.replace(/\s+/g, ' ').trim()
 }
 
-async function collectRefImageUrls(refs?: AssistantRef[], dramaId?: number | null): Promise<string[]> {
+export async function collectRefImageUrls(refs?: AssistantRef[], dramaId?: number | null): Promise<string[]> {
   const urls: string[] = []
   for (const raw of refs || []) {
     const r = normalizeRef(raw)
@@ -758,10 +771,18 @@ export async function tryDirectImageEdit(opts: {
   const stripped = stripAtTokens(opts.text, opts.refs)
   const looksLikeEdit = IMAGE_EDIT_HINT.test(stripped) || IMAGE_EDIT_HINT.test(opts.text)
 
+  const hasExplicitImageRef = (opts.refs || []).some(r => {
+    const n = normalizeRef(r)
+    if (n.category === 'generated' && n.image_url) return true
+    if (n.category === 'asset' && n.id && n.image_url) return true
+    return false
+  }) || !!(opts.attachments?.length)
+
   const shouldEdit = (hasGeneratedRef && !!stripped)
     || (hasAssetRef && looksLikeEdit)
     || (opts.attachments?.length && looksLikeEdit)
     || (!hasGeneratedRef && !hasAssetRef && !!opts.latestGenerated?.url && looksLikeEdit)
+    || (hasExplicitImageRef && !!stripped)
 
   if (!shouldEdit) return null
 

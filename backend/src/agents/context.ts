@@ -5,6 +5,9 @@
 import { RequestContext } from '@mastra/core/request-context'
 import type { ImportCandidate } from './tools/import-tools.js'
 import type { StoryboardImportCandidate } from './tools/storyboard-import-tools.js'
+import type { AssistantRef } from '../services/assistant.js'
+
+export type AssistantAttachment = { url: string; name?: string }
 
 export interface AssistantUiContext {
   route?: string
@@ -27,6 +30,9 @@ export interface AgentRequestContextValues {
   img2imgConfigId?: number
   imageModelOverride?: string
   uiContext?: AssistantUiContext
+  /** 本轮用户 @ 引用（工具层可自动注入 reference，避免模型漏传） */
+  assistantRefs?: AssistantRef[]
+  assistantAttachments?: AssistantAttachment[]
   /** 资产导入解析阶段：Agent 通过工具写入候选，服务层读取 */
   importCandidateBuffer?: ImportCandidate[]
   /** 分镜导入解析阶段 */
@@ -43,6 +49,8 @@ export function buildAgentRequestContext(values: AgentRequestContextValues): Req
   if (values.img2imgConfigId) rc.set('img2imgConfigId', values.img2imgConfigId)
   if (values.imageModelOverride) rc.set('imageModelOverride', values.imageModelOverride)
   if (values.uiContext) rc.set('uiContext', values.uiContext)
+  if (values.assistantRefs?.length) rc.set('assistantRefs', values.assistantRefs)
+  if (values.assistantAttachments?.length) rc.set('assistantAttachments', values.assistantAttachments)
   if (values.importCandidateBuffer) rc.set('importCandidateBuffer', values.importCandidateBuffer)
   if (values.storyboardImportBuffer) rc.set('storyboardImportBuffer', values.storyboardImportBuffer)
   return rc
@@ -76,6 +84,16 @@ export function getImageModelOverride(requestContext: RequestContext | undefined
 export function getUiContext(requestContext: RequestContext | undefined): AssistantUiContext | null {
   const v = requestContext?.get('uiContext' as never)
   return v && typeof v === 'object' ? (v as AssistantUiContext) : null
+}
+
+export function getAssistantRefs(requestContext: RequestContext | undefined): AssistantRef[] {
+  const v = requestContext?.get('assistantRefs' as never)
+  return Array.isArray(v) ? (v as AssistantRef[]) : []
+}
+
+export function getAssistantAttachments(requestContext: RequestContext | undefined): AssistantAttachment[] {
+  const v = requestContext?.get('assistantAttachments' as never)
+  return Array.isArray(v) ? (v as AssistantAttachment[]) : []
 }
 
 export function getImportCandidateBuffer(requestContext: RequestContext | undefined): ImportCandidate[] | null {

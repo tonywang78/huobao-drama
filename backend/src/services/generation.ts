@@ -6,7 +6,7 @@ import { db, getInsertId, schema } from '../db/index.js'
 import { eq, inArray, and } from 'drizzle-orm'
 import { getActiveConfig, getConfigById, isOfficialProvider, type ServiceType } from './ai.js'
 import { now } from '../utils/response.js'
-import { downloadFile, generateImageThumb, readImageAsCompressedDataUrl, saveBase64Image } from '../utils/storage.js'
+import { downloadFile, fetchImageAsCompressedDataUrl, generateImageThumb, readImageAsCompressedDataUrl, saveBase64Image } from '../utils/storage.js'
 import { extractVideoPoster } from '../utils/video-poster.js'
 import { getImageAdapter, getVideoAdapter } from './adapters/registry'
 import type { AIConfig } from './adapters/types'
@@ -804,6 +804,22 @@ async function handleVideoComplete(record: SysTaskRecord, videoUrl: string, dura
 
 // ─── 参考素材归一化 ───────────────────────────────────────────────
 
+const REF_COMPRESS_OPTS = { maxWidth: 768, maxHeight: 768, quality: 68 }
+
+function extractLocalStaticPath(value: string): string | null {
+  const trimmed = String(value || '').trim()
+  if (!trimmed) return null
+  if (trimmed.startsWith('static/')) return trimmed
+  if (trimmed.startsWith('/static/')) return trimmed.slice(1)
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    try {
+      const pathname = new URL(trimmed).pathname
+      if (pathname.startsWith('/static/')) return pathname.slice(1)
+    } catch { /* ignore */ }
+  }
+  return null
+}
+
 async function normalizeReferenceImages(refs: string[] | null | undefined): Promise<string[]> {
   if (!Array.isArray(refs) || !refs.length) return []
 
@@ -817,20 +833,24 @@ async function normalizeReferenceImages(refs: string[] | null | undefined): Prom
 
   const normalized = await Promise.all(deduped.map(async (value) => {
     if (value.startsWith('data:image/')) return value
-    if (value.startsWith('static/') || value.startsWith('/static/')) {
-      const localPath = value.startsWith('/static/') ? value.slice(1) : value
+    const localPath = extractLocalStaticPath(value)
+    if (localPath) {
       try {
-        return await readImageAsCompressedDataUrl(localPath, {
-          maxWidth: 768,
-          maxHeight: 768,
-          quality: 68,
-        })
+        return await readImageAsCompressedDataUrl(localPath, REF_COMPRESS_OPTS)
       } catch (err) {
         logTaskWarn('ImageTask', 'reference-read-failed', { path: localPath, error: (err as Error).message })
         return null
       }
     }
-    return value
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      try {
+        return await fetchImageAsCompressedDataUrl(value, REF_COMPRESS_OPTS)
+      } catch (err) {
+        logTaskWarn('ImageTask', 'reference-fetch-failed', { url: redactUrl(value), error: (err as Error).message })
+        return null
+      }
+    }
+    return null
   }))
 
   return normalized.filter((item): item is string => !!item).slice(0, 6)

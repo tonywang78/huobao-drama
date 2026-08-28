@@ -400,24 +400,26 @@
               ></textarea>
             </section>
 
-            <!-- 场景改图：基于当前图 + 修改提示词 -->
-            <section v-if="editTarget.kindKey === 'scene'" class="mat-detail-prompt-panel">
+            <!-- 改图 · 图生图（角色 / 场景） -->
+            <section v-if="editTarget.kindKey === 'character' || editTarget.kindKey === 'scene'" class="mat-detail-prompt-panel">
               <div class="mat-detail-section-title">
                 <span>改图 · 图生图</span>
-                <span class="dim">基于当前场景图按提示词微调，完整重生成请用「重新生成」</span>
+                <span class="dim">{{ editTarget.kindKey === 'character' ? '基于当前角色图按提示词微调，完整重生成请用「重新生成」' : '基于当前场景图按提示词微调，完整重生成请用「重新生成」' }}</span>
               </div>
               <textarea
-                v-model="editDraft.sceneEditPrompt"
+                v-model="editDraft.assetEditPrompt"
                 class="textarea mat-detail-prompt-text"
                 rows="3"
-                placeholder="如：把天空改成傍晚，增加暖色灯光…"
+                :placeholder="editTarget.kindKey === 'character'
+                  ? '如：把衣服改成红色，增加金色配饰…'
+                  : '如：把天空改成傍晚，增加暖色灯光…'"
                 :disabled="!matHasImage(editTarget) || isPending(editTarget)"
               ></textarea>
               <button
                 class="btn btn-sm mat-detail-prompt-gen"
                 style="margin-top:8px"
-                :disabled="!matHasImage(editTarget) || !String(editDraft.sceneEditPrompt || '').trim() || isPending(editTarget) || !firstEpisodeId"
-                @click="editSceneMaterial(editTarget)"
+                :disabled="!matHasImage(editTarget) || !String(editDraft.assetEditPrompt || '').trim() || isPending(editTarget) || !firstEpisodeId"
+                @click="editTarget.kindKey === 'character' ? editCharacterMaterial(editTarget) : editSceneMaterial(editTarget)"
               >
                 {{ isPending(editTarget) ? '改图中…' : '改图' }}
               </button>
@@ -929,9 +931,9 @@ function openEdit(m) {
   // 按类型初始化 draft
   Object.keys(editDraft).forEach(k => delete editDraft[k])
   if (m.kindKey === 'character') {
-    Object.assign(editDraft, { name: m.name || '', role: m.role || '', appearance: m.appearance || '', description: m.description || '', styling: m.styling || '' })
+    Object.assign(editDraft, { name: m.name || '', role: m.role || '', appearance: m.appearance || '', description: m.description || '', styling: m.styling || '', assetEditPrompt: '' })
   } else if (m.kindKey === 'scene') {
-    Object.assign(editDraft, { location: m.location || '', time: m.time || '', prompt: m.prompt || '', lighting: m.lighting || '', sceneEditPrompt: '' })
+    Object.assign(editDraft, { location: m.location || '', time: m.time || '', prompt: m.prompt || '', lighting: m.lighting || '', assetEditPrompt: '' })
   } else {
     Object.assign(editDraft, { name: m.name || '', type: m.type || '', description: m.description || '' })
   }
@@ -950,7 +952,7 @@ const lockedImg2imgConfigId = computed(() => {
 async function editSceneMaterial(m) {
   const epId = firstEpisodeId.value
   if (!epId) { toast.error('请先在「剧集列表」创建至少一集，才能改图'); return }
-  const prompt = String(editDraft.sceneEditPrompt || '').trim()
+  const prompt = String(editDraft.assetEditPrompt || '').trim()
   if (!prompt) { toast.warning('请输入改图提示词'); return }
   if (!matHasImage(m)) { toast.warning('请先生成或上传场景图'); return }
   const key = pendingKey(m)
@@ -959,6 +961,25 @@ async function editSceneMaterial(m) {
   try {
     await sceneAPI.editImage(m.id, epId, prompt, lockedImg2imgConfigId.value || undefined)
     toast.success(`场景「${m.name}」改图中`)
+    pollMaterial(m)
+  } catch (e) {
+    pendingMaterials.value = new Set([...pendingMaterials.value].filter(k => k !== key))
+    toast.error(e.message)
+  }
+}
+
+async function editCharacterMaterial(m) {
+  const epId = firstEpisodeId.value
+  if (!epId) { toast.error('请先在「剧集列表」创建至少一集，才能改图'); return }
+  const prompt = String(editDraft.assetEditPrompt || '').trim()
+  if (!prompt) { toast.warning('请输入改图提示词'); return }
+  if (!matHasImage(m)) { toast.warning('请先生成或上传角色图'); return }
+  const key = pendingKey(m)
+  if (pendingMaterials.value.has(key)) return
+  pendingMaterials.value = new Set(pendingMaterials.value).add(key)
+  try {
+    await characterAPI.editImage(m.id, epId, prompt, lockedImg2imgConfigId.value || undefined)
+    toast.success(`角色「${m.name}」改图中`)
     pollMaterial(m)
   } catch (e) {
     pendingMaterials.value = new Set([...pendingMaterials.value].filter(k => k !== key))

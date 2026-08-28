@@ -150,7 +150,7 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
   // 最终提示词手动编辑：dirty 时才随保存提交，避免无修改保存误清空 Agent 生成的提示词
   const assetPromptDraft = ref('')
   const assetPromptDirty = ref(false)
-  const sceneEditPrompt = ref('')
+  const assetEditPrompt = ref('')
   const savingAssetDetail = ref(false)
 
   function configLabel(config) {
@@ -184,7 +184,7 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     }
     assetPromptDraft.value = item.final_prompt || item.finalPrompt || ''
     assetPromptDirty.value = false
-    sceneEditPrompt.value = ''
+    assetEditPrompt.value = ''
   }
 
   function closeAssetDetail() {
@@ -192,7 +192,7 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     assetDetailDraft.value = { appearance: '', styling: '', prompt: '', lighting: '', description: '' }
     assetPromptDraft.value = ''
     assetPromptDirty.value = false
-    sceneEditPrompt.value = ''
+    assetEditPrompt.value = ''
   }
 
   // ─── 手动新增资产 ────────────────────────────────────────────
@@ -1705,6 +1705,30 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
       toast.error(e.message)
     }
   }
+  async function editCharImg(id, editPrompt) {
+    const prompt = String(editPrompt || '').trim()
+    if (!prompt) { toast.warning('请输入改图提示词'); return }
+    const char = chars.value.find(c => c.id === id)
+    if (!char?.image_url && !char?.imageUrl && !char?.local_path && !char?.localPath) {
+      toast.warning('请先生成或上传角色图')
+      return
+    }
+    try {
+      if (!isPendingCharImage(id)) pendingCharImageIds.value.push(id)
+      await characterAPI.editImage(id, epId.value, prompt, lockedImg2imgConfigId.value || undefined)
+      toast.success('角色改图中')
+      await refresh()
+      watchAsyncResult(() => {
+        const c = chars.value.find(x => x.id === id)
+        const done = !!(c?.image_url || c?.imageUrl)
+        if (done) pendingCharImageIds.value = pendingCharImageIds.value.filter(item => item !== id)
+        return done
+      })
+    } catch (e) {
+      pendingCharImageIds.value = pendingCharImageIds.value.filter(item => item !== id)
+      toast.error(e.message)
+    }
+  }
   async function editSceneImg(id, editPrompt) {
     const prompt = String(editPrompt || '').trim()
     if (!prompt) { toast.warning('请输入改图提示词'); return }
@@ -2615,8 +2639,8 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     assetReadyCount, assetTotalCount, batchCharImages, batchSceneImages, batchPropImages,
     isPendingCharImage, isPendingSceneImage, isPendingPropImage, genCharImg, genSceneImg, genPropImg,
     isUploadingAsset, uploadAssetImage, openAssetImport,
-    isGeneratingPrompt, onAssetPromptInput, assetPromptDraft, assetPromptDirty, sceneEditPrompt, genAssetFinalPrompt, copyAssetFinalPrompt,
-    assetFinalPrompt, isAssetImagePending, savingAssetDetail, lockedImg2imgConfigLabel, editSceneImg,
+    isGeneratingPrompt, onAssetPromptInput, assetPromptDraft, assetPromptDirty, assetEditPrompt, genAssetFinalPrompt, copyAssetFinalPrompt,
+    assetFinalPrompt, isAssetImagePending, savingAssetDetail, lockedImg2imgConfigLabel, editCharImg, editSceneImg,
     selectedSb, selectedSbIds, sbSelectMode, isSbSelected, toggleSbSelect, toggleSelectAllSbs, onShotCardClick,
     selectMissingSbs, exitSbSelectMode, generateSelectedVideoPrompts, videoPromptBatch, videoPromptGeneratingIds,
     batchVideoPrompts, doBreakdown, genVideoPrompt, addStoryboard, creatingSb,
