@@ -194,6 +194,8 @@ app.post('/chat', async (c) => {
   const agent = mastra.getAgent('studio_assistant')
   if (!agent) return badRequest(c, '工作室助手未注册')
 
+  const enableThinking = body.enable_thinking === true || body.enableThinking === true
+
   const requestContext = buildAgentRequestContext({
     episodeId: episodeId || 0,
     dramaId: dramaId || 0,
@@ -202,6 +204,7 @@ app.post('/chat', async (c) => {
     imageConfigId: body.image_config_id || undefined,
     img2imgConfigId: body.img2img_config_id || undefined,
     imageModelOverride: body.image_model || undefined,
+    enableThinking,
     uiContext: { ...ui, drama_id: dramaId, episode_id: episodeId },
     assistantRefs: refs,
     assistantAttachments: attachments,
@@ -216,12 +219,57 @@ app.post('/chat', async (c) => {
     const send = (event: string, data: unknown) => sse.writeSSE({ event, data: JSON.stringify(data) })
     try {
       let textOut = ''
+      let reasoningOut = ''
       let rawResult: any = null
+
+      const extractChunkText = (chunk: any): string => {
+        if (!chunk) return ''
+        if (typeof chunk === 'string') return chunk
+        return String(
+          chunk?.payload?.text
+          ?? chunk?.textDelta
+          ?? chunk?.delta
+          ?? chunk?.text
+          ?? '',
+        )
+      }
+
+      const extractReasoningText = (result: any): string => {
+        if (!result) return ''
+        if (typeof result.reasoningText === 'string' && result.reasoningText.trim()) {
+          return result.reasoningText.trim()
+        }
+        if (typeof result.reasoning === 'string') return result.reasoning.trim()
+        if (Array.isArray(result.reasoning)) {
+          return result.reasoning
+            .map((p: any) => (typeof p === 'string' ? p : (p?.text || '')))
+            .filter(Boolean)
+            .join('')
+            .trim()
+        }
+        return ''
+      }
+
       try {
         const streamed: any = await agent.stream(messages as any, { maxSteps: 12, requestContext })
-        if (streamed?.textStream) {
+        if (streamed?.fullStream) {
+          for await (const chunk of streamed.fullStream) {
+            const type = chunk?.type
+            if (type === 'text-delta') {
+              const delta = extractChunkText(chunk)
+              if (!delta) continue
+              textOut += delta
+              await send('text-delta', { text: delta })
+            } else if (type === 'reasoning-delta') {
+              const delta = extractChunkText(chunk)
+              if (!delta) continue
+              reasoningOut += delta
+              await send('reasoning-delta', { text: delta })
+            }
+          }
+        } else if (streamed?.textStream) {
           for await (const chunk of streamed.textStream) {
-            const delta = typeof chunk === 'string' ? chunk : (chunk?.textDelta || chunk?.text || '')
+            const delta = extractChunkText(chunk)
             if (!delta) continue
             textOut += delta
             await send('text-delta', { text: delta })
@@ -231,10 +279,16 @@ app.post('/chat', async (c) => {
           ? await streamed.getFullOutput()
           : streamed
         if (!textOut) textOut = rawResult?.text || ''
+        if (!reasoningOut) {
+          reasoningOut = extractReasoningText(rawResult)
+          if (reasoningOut) await send('reasoning', { text: reasoningOut })
+        }
       } catch (streamErr: any) {
         logTaskError('Assistant', 'stream-fallback', { error: streamErr?.message })
         rawResult = await agent.generate(messages as any, { maxSteps: 12, requestContext })
         textOut = rawResult?.text || ''
+        reasoningOut = extractReasoningText(rawResult)
+        if (reasoningOut) await send('reasoning', { text: reasoningOut })
         if (textOut) await send('text', { text: textOut })
       }
 
@@ -299,6 +353,7 @@ app.post('/chat', async (c) => {
       }))
       const assistantContent: AssistantMessageContent = {
         text: textOut,
+        reasoning: reasoningOut || undefined,
         toolCalls: outcomes.toolCalls,
         artifacts,
         proposal: outcomes.proposals[0] || undefined,
@@ -309,6 +364,7 @@ app.post('/chat', async (c) => {
         message_id: messageId,
         thread_id: thread.id,
         text: textOut,
+        reasoning: reasoningOut || null,
         artifacts,
         proposal: outcomes.proposals[0] || null,
         did_write: outcomes.didWrite,

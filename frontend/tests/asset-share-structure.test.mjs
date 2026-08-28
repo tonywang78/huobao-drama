@@ -34,12 +34,15 @@ test('episode assets panel supports batch unlink with select-all', () => {
   assert.match(page, /移除已选/)
   assert.match(page, /全选/)
   assert.match(page, /其他集与项目素材库仍保留/)
-  assert.doesNotMatch(page, /characterAPI\.del\(/)
-  assert.doesNotMatch(page, /sceneAPI\.del\(/)
-  assert.doesNotMatch(page, /propAPI\.del\(/)
+  assert.match(page, /从共享库永久删除/)
+  assert.match(page, /confirmDeleteAssetFromLibrary/)
+  assert.match(page, /characterAPI\.del\(/)
+  assert.match(page, /sceneAPI\.del\(/)
+  assert.match(page, /propAPI\.del\(/)
+  assert.match(page, /secondary-confirm-text="从共享库删除"/)
 })
 
-test('episode workbench can pick from library and unlink instead of soft-delete', () => {
+test('episode workbench can pick from library and unlink or hard-delete from shared library', () => {
   const page = readEpisodeWorkbenchSources()
 
   assert.match(page, /从素材库选入/)
@@ -51,11 +54,11 @@ test('episode workbench can pick from library and unlink instead of soft-delete'
   assert.match(page, /episodeAPI\.unlinkProp/)
   assert.match(page, /从本集移除/)
   assert.match(page, /其他集与项目素材库仍保留/)
-  // 本集工作台不再调用实体软删
-  assert.doesNotMatch(page, /characterAPI\.del\(/)
-  assert.doesNotMatch(page, /sceneAPI\.del\(/)
-  assert.doesNotMatch(page, /propAPI\.del\(/)
-  assert.doesNotMatch(page, /从本剧所有集中移除/)
+  assert.match(page, /从共享库删除/)
+  assert.match(page, /confirmDeleteAssetFromLibrary/)
+  assert.match(page, /characterAPI\.del\(/)
+  assert.match(page, /sceneAPI\.del\(/)
+  assert.match(page, /propAPI\.del\(/)
 })
 
 test('drama detail materials hide soft-deleted assets', () => {

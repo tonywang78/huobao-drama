@@ -2439,7 +2439,8 @@
   gap: 10px;
 }
 .asset-detail-edit-grid--character,
-.asset-detail-edit-grid--scene {
+.asset-detail-edit-grid--scene,
+.asset-detail-edit-grid--prop {
   grid-template-columns: 1fr;
 }
 .asset-detail-edit-field {

@@ -36,3 +36,12 @@ test('material library regenerate also saves the edited scene description first'
   assert.match(genFn, /editDraft\.prompt/)
   assert.match(genFn, /editDraft\.lighting/)
 })
+
+test('episode asset detail allows editing name/location fields', () => {
+  assert.match(workbench, /assetDetailDraft\.name/)
+  assert.match(workbench, /assetDetailDraft\.location/)
+  assert.match(workbench, /payload\.name = \(draft\.name \|\| ''\)\.trim\(\)/)
+  assert.match(workbench, /payload\.location = \(draft\.location \|\| ''\)\.trim\(\)/)
+  assert.match(workbench, /请填写名称/)
+  assert.match(workbench, /请填写场景地点/)
+})

@@ -195,16 +195,20 @@ export const validAgentTypes = Object.keys(DEFAULT_PROMPTS)
 let lastLoggedTextEndpointKey = ''
 
 /**
- * 关闭思考(thinking)模式
+ * 非官方文本端点请求体兼容层
  *
- * 背景：new-api 类中转站对 thinking 模型强制要求多轮请求回传 reasoning_content,
- * 而 Agent 多轮工具调用无法回传,会被中转站 400 拒绝
- * ("The `reasoning_content` in the thinking mode must be passed back to the API")。
- * 这里在请求体注入各厂商风格的关思考参数,让模型不产出 reasoning_content。
+ * 1) 合并多条 system/developer 为单条并置于 messages[0]
+ *    背景：Mastra Agent（instructions + workspace/skills）常注入多条 system；
+ *    Qwen/LM Studio 的 Jinja 模板要求 system 只能出现在开头，否则 500
+ *    ("System message must be at the beginning")。
  *
- * - 默认开启;AI_DISABLE_THINKING=false 可关闭注入
- * - 官方 OpenAI / Gemini 端点跳过(官方 API 会拒绝未知参数)
- * - AI_THINKING_OFF_PATCH 可传 JSON 覆盖注入的 OpenAI 风格参数(适配不同中转站)
+ * 2) 关闭思考(thinking)模式（可选）
+ *    背景：new-api 类中转站对 thinking 模型强制要求多轮请求回传 reasoning_content,
+ *    而 Agent 多轮工具调用无法回传,会被中转站 400 拒绝。
+ *    - 默认开启;AI_DISABLE_THINKING=false 可关闭注入
+ *    - AI_THINKING_OFF_PATCH 可传 JSON 覆盖注入的 OpenAI 风格参数
+ *
+ * 官方 OpenAI / Gemini 端点整段跳过（官方 API 会拒绝未知参数，且不需要合并）。
  */
 const thinkingOffEnabled = (process.env.AI_DISABLE_THINKING ?? 'true').toLowerCase() !== 'false'
 
@@ -228,24 +232,73 @@ function openaiThinkingOffPatch(): Record<string, any> {
   }
 }
 
-function createThinkingOffFetch(providerName: string, baseURL: string): typeof fetch | undefined {
-  if (!thinkingOffEnabled || isOfficialTextHost(baseURL)) return undefined
-  const openaiPatch = openaiThinkingOffPatch()
+function messageContentToText(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === 'string') return part
+        if (part && typeof part === 'object' && 'text' in part) return String((part as { text?: unknown }).text ?? '')
+        return ''
+      })
+      .filter(Boolean)
+      .join('\n')
+  }
+  if (content == null) return ''
+  return String(content)
+}
+
+/** 将 system/developer 合并为单条 system，置于消息列表开头（适配 Qwen Jinja） */
+function coalesceSystemMessages(messages: any[]): any[] {
+  const systemParts: string[] = []
+  const rest: any[] = []
+  for (const msg of messages) {
+    const role = msg?.role
+    if (role === 'system' || role === 'developer') {
+      const text = messageContentToText(msg.content).trim()
+      if (text) systemParts.push(text)
+      continue
+    }
+    rest.push(msg)
+  }
+  if (!systemParts.length) return messages
+  return [{ role: 'system', content: systemParts.join('\n\n') }, ...rest]
+}
+
+function openaiThinkingOnPatch(): Record<string, any> {
+  return {
+    enable_thinking: true,
+    thinking: { type: 'enabled' },
+  }
+}
+
+function createCompatFetch(
+  providerName: string,
+  baseURL: string,
+  opts?: { enableThinking?: boolean },
+): typeof fetch | undefined {
+  if (isOfficialTextHost(baseURL)) return undefined
+  const enableThinking = opts?.enableThinking === true
+  // 开思考：不注入关思考参数，并尽量显式打开；关思考：沿用环境变量默认注入
+  const openaiPatch = enableThinking
+    ? openaiThinkingOnPatch()
+    : (thinkingOffEnabled ? openaiThinkingOffPatch() : null)
 
   return async (input: any, init?: any) => {
     try {
       if (init?.body && typeof init.body === 'string') {
         const body = JSON.parse(init.body)
         if (providerName === 'gemini' && Array.isArray(body?.contents)) {
-          // Gemini 原生格式
-          body.generationConfig = {
-            ...(body.generationConfig || {}),
-            thinkingConfig: { thinkingBudget: 0, includeThoughts: false },
+          if (!enableThinking && openaiPatch) {
+            body.generationConfig = {
+              ...(body.generationConfig || {}),
+              thinkingConfig: { thinkingBudget: 0, includeThoughts: false },
+            }
+            init = { ...init, body: JSON.stringify(body) }
           }
-          init = { ...init, body: JSON.stringify(body) }
         } else if (Array.isArray(body?.messages)) {
-          // OpenAI 兼容格式
-          Object.assign(body, openaiPatch)
+          body.messages = coalesceSystemMessages(body.messages)
+          if (openaiPatch) Object.assign(body, openaiPatch)
           init = { ...init, body: JSON.stringify(body) }
         }
       }
@@ -254,7 +307,12 @@ function createThinkingOffFetch(providerName: string, baseURL: string): typeof f
   }
 }
 
-async function getModel(fileModel: string | undefined, modelOverride?: string, textConfigId?: number) {
+async function getModel(
+  fileModel: string | undefined,
+  modelOverride?: string,
+  textConfigId?: number,
+  opts?: { enableThinking?: boolean },
+) {
   // 请求可指定文本配置（含其 provider/baseUrl/apiKey），否则回退到当前启用配置
   const textConfig = (textConfigId ? await getConfigById(textConfigId) : null) || await getTextConfig()
   const modelName = modelOverride || fileModel || textConfig.model
@@ -270,11 +328,15 @@ async function getModel(fileModel: string | undefined, modelOverride?: string, t
     })
   }
 
+  const compatFetch = createCompatFetch(providerName, resolvedBaseURL, {
+    enableThinking: opts?.enableThinking === true,
+  })
+
   if (providerName === 'gemini') {
     const googleProvider = createGoogleGenerativeAI({
       apiKey: textConfig.apiKey,
       baseURL: resolvedBaseURL,
-      fetch: createThinkingOffFetch(providerName, resolvedBaseURL),
+      fetch: compatFetch,
     })
     return googleProvider(modelName)
   }
@@ -282,7 +344,7 @@ async function getModel(fileModel: string | undefined, modelOverride?: string, t
   const provider = createOpenAI({
     baseURL: resolvedBaseURL,
     apiKey: textConfig.apiKey,
-    fetch: createThinkingOffFetch(providerName, resolvedBaseURL),
+    fetch: compatFetch,
   } as any)
   return provider.chat(modelName)
 }
@@ -320,7 +382,8 @@ function buildModel(type: string) {
     const promptFile = await loadAgentPromptFile(type)
     const modelOverride = requestContext?.get('modelOverride' as never) as string | undefined
     const textConfigId = requestContext?.get('textConfigId' as never) as number | undefined
-    return getModel(promptFile?.model || undefined, modelOverride, textConfigId)
+    const enableThinking = requestContext?.get('enableThinking' as never) === true
+    return getModel(promptFile?.model || undefined, modelOverride, textConfigId, { enableThinking })
   }
 }
 

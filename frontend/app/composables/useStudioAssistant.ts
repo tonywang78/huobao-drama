@@ -5,6 +5,7 @@ import { useEpisodeWorkbenchOptional } from '~/composables/useEpisodeWorkbenchIn
 
 const OPEN_KEY = 'huobao:assistant:open'
 const MODEL_KEY = 'huobao:model:assistant'
+const THINKING_KEY = 'huobao:assistant:thinking'
 
 let keybound = false
 const pollingTaskIds = new Set<number>()
@@ -97,6 +98,9 @@ export function useStudioAssistant() {
   const localChatModel = useState('assistant-chat-model', () => {
     try { return localStorage.getItem(MODEL_KEY) || '' } catch { return '' }
   })
+  const enableThinking = useState('assistant-enable-thinking', () => {
+    try { return localStorage.getItem(THINKING_KEY) === '1' } catch { return false }
+  })
   const textConfigs = useState('assistant-text-configs', () => [])
   const imagePreview = useState('assistant-image-preview', () => ({
     open: false, src: '', title: '',
@@ -137,6 +141,12 @@ export function useStudioAssistant() {
   watch(localChatModel, (v) => {
     try { v ? localStorage.setItem(MODEL_KEY, v) : localStorage.removeItem(MODEL_KEY) } catch { /* 静默 */ }
   })
+  watch(enableThinking, (v) => {
+    try { localStorage.setItem(THINKING_KEY, v ? '1' : '0') } catch { /* 静默 */ }
+  })
+  function setEnableThinking(v) {
+    enableThinking.value = !!v
+  }
 
   function assetOption(type, item) {
     if (type === 'scene') {
@@ -655,9 +665,10 @@ export function useStudioAssistant() {
     const assistantMsg = {
       id: `tmp-asst-${Date.now()}`,
       role: 'assistant',
-      content: { text: '', artifacts: [], proposal: null },
+      content: { text: '', reasoning: '', artifacts: [], proposal: null },
       created_at: new Date().toISOString(),
       streaming: true,
+      reasoningOpen: true,
     }
     messages.value.push(assistantMsg)
     let assistantIdx = messages.value.length - 1
@@ -680,6 +691,7 @@ export function useStudioAssistant() {
           attachments: atts,
           model: bareModelName(chatModel.value) || undefined,
           config_id: ownerConfigId(textModelOptions.value, chatModel.value),
+          enable_thinking: !!enableThinking.value,
           image_model: wb ? bareModelName(wb.imageModel) || undefined : undefined,
           image_config_id: ep.image_config_id || ep.imageConfigId || undefined,
           img2img_config_id: ep.img2img_config_id || ep.img2imgConfigId || undefined,
@@ -694,6 +706,18 @@ export function useStudioAssistant() {
           patchAssistant(cur => ({
             ...cur,
             content: { ...cur.content, text: (cur.content.text || '') + (data.text || '') },
+          }))
+        } else if (event === 'reasoning-delta') {
+          patchAssistant(cur => ({
+            ...cur,
+            reasoningOpen: cur.reasoningOpen !== false,
+            content: { ...cur.content, reasoning: (cur.content.reasoning || '') + (data.text || '') },
+          }))
+        } else if (event === 'reasoning') {
+          patchAssistant(cur => ({
+            ...cur,
+            reasoningOpen: false,
+            content: { ...cur.content, reasoning: data.text || cur.content.reasoning || '' },
           }))
         } else if (event === 'needs_confirmation') {
           patchAssistant(cur => ({ ...cur, content: { ...cur.content, proposal: data } }))
@@ -716,9 +740,11 @@ export function useStudioAssistant() {
             ...cur,
             id: data.message_id,
             streaming: false,
+            reasoningOpen: false,
             content: {
               ...cur.content,
               text: data.text || cur.content.text,
+              reasoning: data.reasoning || cur.content.reasoning || '',
               proposal: data.proposal || cur.content.proposal,
               artifacts: data.artifacts?.length
                 ? mergeIncomingArtifacts(cur.content?.artifacts, data.artifacts)
@@ -1051,7 +1077,7 @@ export function useStudioAssistant() {
 
   return reactive({
     open, toggle, sending, confirming, clearing, thread, messages, assets, mentions, snippets, draft, attachments,
-    textModelOptions, textModelMultiCfg, chatModel, setChatModel, mentionOptions,
+    textModelOptions, textModelMultiCfg, chatModel, setChatModel, enableThinking, setEnableThinking, mentionOptions,
     imagePreview, assetDialog, listAssetCandidates, selectedAssetCandidate,
     snippetSave, snippetEdit, currentDramaId, projectSnippets, sharedSnippets,
     send, confirmProposal, dismissProposal, addAttachment, removeAttachment,

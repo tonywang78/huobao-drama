@@ -6,8 +6,10 @@ import { generateImage, generateImageEdit } from '../services/generation.js'
 import { getDramaStylePrompt } from '../services/style-preset.js'
 import { ensureSceneFinalPrompt } from '../services/final-prompt.js'
 import { hardDeleteScene } from '../utils/asset-hard-delete.js'
+import { duplicateScene } from '../utils/asset-duplicate.js'
 import { logTaskError, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
 import { recordAssetImageHistory, shouldRecordImageHistory } from '../utils/asset-image-history.js'
+import { toSnakeCase } from '../utils/transform.js'
 
 const app = new Hono()
 
@@ -177,6 +179,19 @@ app.delete('/:id', async (c) => {
   if (!scene) return notFound(c, '场景不存在')
   await hardDeleteScene(id)
   return success(c)
+})
+
+// POST /scenes/:id/duplicate — 同剧复制为新实体（可选挂到 episode_id）
+app.post('/:id/duplicate', async (c) => {
+  const id = Number(c.req.param('id'))
+  const body = await c.req.json().catch(() => ({}))
+  const episodeId = body.episode_id ?? body.episodeId ?? null
+  const result = await duplicateScene(id, episodeId)
+  if (!result.ok) {
+    if (result.code === 'not_found') return notFound(c, result.message)
+    return badRequest(c, result.message)
+  }
+  return created(c, toSnakeCase(result.row))
 })
 
 export default app

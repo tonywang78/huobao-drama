@@ -84,6 +84,7 @@ export const characterAPI = {
   create: (data: any) => api.post('/characters', data),
   update: (id: number, data: any) => api.put(`/characters/${id}`, data),
   del: (id: number) => api.del(`/characters/${id}`),
+  duplicate: (id: number, data?: { episode_id?: number }) => api.post(`/characters/${id}/duplicate`, data || {}),
   generatePrompt: (id: number, episodeId: number, force = false, textModel?: string, textConfigId?: number) => api.post(`/characters/${id}/generate-prompt`, { episode_id: episodeId, force, text_model: textModel || undefined, text_config_id: textConfigId || undefined }),
   generateImage: (id: number, episodeId: number, model?: string, configId?: number, textModel?: string, textConfigId?: number) => api.post(`/characters/${id}/generate-image`, { episode_id: episodeId, model: model || undefined, config_id: configId || undefined, text_model: textModel || undefined, text_config_id: textConfigId || undefined }),
   editImage: (id: number, episodeId: number, editPrompt: string, configId?: number, model?: string) => api.post(`/characters/${id}/edit-image`, { episode_id: episodeId, edit_prompt: editPrompt, config_id: configId || undefined, model: model || undefined }),
@@ -94,6 +95,7 @@ export const sceneAPI = {
   create: (data: any) => api.post('/scenes', data),
   update: (id: number, data: any) => api.put(`/scenes/${id}`, data),
   del: (id: number) => api.del(`/scenes/${id}`),
+  duplicate: (id: number, data?: { episode_id?: number }) => api.post(`/scenes/${id}/duplicate`, data || {}),
   generatePrompt: (id: number, episodeId: number, force = false, textModel?: string, textConfigId?: number) => api.post(`/scenes/${id}/generate-prompt`, { episode_id: episodeId, force, text_model: textModel || undefined, text_config_id: textConfigId || undefined }),
   generateImage: (id: number, episodeId: number, model?: string, configId?: number, textModel?: string, textConfigId?: number) => api.post(`/scenes/${id}/generate-image`, { episode_id: episodeId, model: model || undefined, config_id: configId || undefined, text_model: textModel || undefined, text_config_id: textConfigId || undefined }),
   editImage: (id: number, episodeId: number, editPrompt: string, configId?: number, model?: string) => api.post(`/scenes/${id}/edit-image`, { episode_id: episodeId, edit_prompt: editPrompt, config_id: configId || undefined, model: model || undefined }),
@@ -103,6 +105,7 @@ export const propAPI = {
   create: (data: any) => api.post('/props', data),
   update: (id: number, data: any) => api.put(`/props/${id}`, data),
   del: (id: number) => api.del(`/props/${id}`),
+  duplicate: (id: number, data?: { episode_id?: number }) => api.post(`/props/${id}/duplicate`, data || {}),
   generatePrompt: (id: number, episodeId: number, force = false, textModel?: string, textConfigId?: number) => api.post(`/props/${id}/generate-prompt`, { episode_id: episodeId, force, text_model: textModel || undefined, text_config_id: textConfigId || undefined }),
   generateImage: (id: number, episodeId: number, model?: string, configId?: number, textModel?: string, textConfigId?: number) => api.post(`/props/${id}/generate-image`, { episode_id: episodeId, model: model || undefined, config_id: configId || undefined, text_model: textModel || undefined, text_config_id: textConfigId || undefined }),
 }

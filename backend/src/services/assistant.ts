@@ -43,6 +43,8 @@ export type MentionOption = {
 
 export type AssistantMessageContent = {
   text?: string
+  /** 模型思考过程（可选，开思考时落库） */
+  reasoning?: string
   refs?: AssistantRef[]
   attachments?: Array<{ url: string; name?: string }>
   toolCalls?: Array<{ toolName: string; args?: unknown; result?: unknown }>

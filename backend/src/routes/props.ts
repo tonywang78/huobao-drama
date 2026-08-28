@@ -7,6 +7,7 @@ import { generateImage } from '../services/generation.js'
 import { getDramaStylePrompt } from '../services/style-preset.js'
 import { ensurePropFinalPrompt } from '../services/final-prompt.js'
 import { hardDeleteProp } from '../utils/asset-hard-delete.js'
+import { duplicateProp } from '../utils/asset-duplicate.js'
 import { logTaskError, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
 import { recordAssetImageHistory, shouldRecordImageHistory } from '../utils/asset-image-history.js'
 
@@ -48,6 +49,19 @@ app.delete('/:id', async (c) => {
   if (!prop) return notFound(c, '道具不存在')
   await hardDeleteProp(id)
   return success(c)
+})
+
+// POST /props/:id/duplicate — 同剧复制为新实体（可选挂到 episode_id）
+app.post('/:id/duplicate', async (c) => {
+  const id = Number(c.req.param('id'))
+  const body = await c.req.json().catch(() => ({}))
+  const episodeId = body.episode_id ?? body.episodeId ?? null
+  const result = await duplicateProp(id, episodeId)
+  if (!result.ok) {
+    if (result.code === 'not_found') return notFound(c, result.message)
+    return badRequest(c, result.message)
+  }
+  return created(c, toSnakeCase(result.row))
 })
 
 // PUT /props/:id — 更新道具（物品外貌/类型/最终提示词）

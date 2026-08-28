@@ -29,6 +29,8 @@ export interface AgentRequestContextValues {
   imageConfigId?: number
   img2imgConfigId?: number
   imageModelOverride?: string
+  /** 本轮是否开启模型思考（默认关；影响兼容层关思考注入） */
+  enableThinking?: boolean
   uiContext?: AssistantUiContext
   /** 本轮用户 @ 引用（工具层可自动注入 reference，避免模型漏传） */
   assistantRefs?: AssistantRef[]
@@ -48,6 +50,7 @@ export function buildAgentRequestContext(values: AgentRequestContextValues): Req
   if (values.imageConfigId) rc.set('imageConfigId', values.imageConfigId)
   if (values.img2imgConfigId) rc.set('img2imgConfigId', values.img2imgConfigId)
   if (values.imageModelOverride) rc.set('imageModelOverride', values.imageModelOverride)
+  if (typeof values.enableThinking === 'boolean') rc.set('enableThinking', values.enableThinking)
   if (values.uiContext) rc.set('uiContext', values.uiContext)
   if (values.assistantRefs?.length) rc.set('assistantRefs', values.assistantRefs)
   if (values.assistantAttachments?.length) rc.set('assistantAttachments', values.assistantAttachments)
@@ -79,6 +82,11 @@ export function getImg2imgConfigId(requestContext: RequestContext | undefined): 
 export function getImageModelOverride(requestContext: RequestContext | undefined): string | undefined {
   const v = requestContext?.get('imageModelOverride' as never)
   return typeof v === 'string' && v ? v : undefined
+}
+
+/** 未显式传入时视为关闭思考（与助手面板默认一致） */
+export function getEnableThinking(requestContext: RequestContext | undefined): boolean {
+  return requestContext?.get('enableThinking' as never) === true
 }
 
 export function getUiContext(requestContext: RequestContext | undefined): AssistantUiContext | null {

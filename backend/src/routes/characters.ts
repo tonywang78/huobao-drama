@@ -7,6 +7,7 @@ import { generateImage, generateImageEdit } from '../services/generation.js'
 import { getDramaStylePrompt } from '../services/style-preset.js'
 import { ensureCharacterFinalPrompt } from '../services/final-prompt.js'
 import { hardDeleteCharacter } from '../utils/asset-hard-delete.js'
+import { duplicateCharacter } from '../utils/asset-duplicate.js'
 import { logTaskError, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
 import { recordAssetImageHistory, shouldRecordImageHistory } from '../utils/asset-image-history.js'
 
@@ -94,6 +95,19 @@ app.delete('/:id', async (c) => {
   if (!char) return notFound(c, '角色不存在')
   await hardDeleteCharacter(id)
   return success(c)
+})
+
+// POST /characters/:id/duplicate — 同剧复制为新实体（可选挂到 episode_id）
+app.post('/:id/duplicate', async (c) => {
+  const id = Number(c.req.param('id'))
+  const body = await c.req.json().catch(() => ({}))
+  const episodeId = body.episode_id ?? body.episodeId ?? null
+  const result = await duplicateCharacter(id, episodeId)
+  if (!result.ok) {
+    if (result.code === 'not_found') return notFound(c, result.message)
+    return badRequest(c, result.message)
+  }
+  return created(c, toSnakeCase(result.row))
 })
 
 // POST /characters/:id/generate-image

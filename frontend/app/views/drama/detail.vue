@@ -220,11 +220,14 @@
                 :download-name="assetDownloadName(m)"
                 :download-title="`下载${m.kind}图`"
                 :upload-title="`上传${m.kind}图`"
+                :duplicate-title="`复制${m.kind}`"
+                :duplicating="duplicatingMaterial"
                 :delete-title="`删除${m.kind}`"
                 @click="openEdit(m)"
                 @delete="askDeleteMaterial(m)"
                 @generate="generateMaterial(m)"
                 @upload="uploadMaterial(m)"
+                @duplicate="duplicateMaterial(m)"
                 @preview="openAssetViewer(m)"
                 @thumb-error="thumbFallback($event, assetSrc(m))"
               />
@@ -429,6 +432,10 @@
           <footer class="dialog-foot mat-detail-foot">
             <div class="mat-detail-secondary-actions">
               <button class="btn btn-danger" @click="askDeleteMaterial(editTarget)">删除素材</button>
+              <button class="btn" :disabled="duplicatingMaterial" @click="duplicateMaterial(editTarget)">
+                <span v-if="duplicatingMaterial" class="ring-spinner sm"></span>
+                复制资产
+              </button>
               <button class="btn" @click="closeEdit">关闭</button>
             </div>
             <div class="mat-detail-primary-actions">
@@ -703,6 +710,28 @@ async function confirmDeleteMaterial() {
     toast.error(e.message || '删除失败')
   } finally {
     deletingMaterial.value = false
+  }
+}
+
+const duplicatingMaterial = ref(false)
+
+async function duplicateMaterial(m) {
+  if (!m?.id || duplicatingMaterial.value) return
+  duplicatingMaterial.value = true
+  try {
+    let created
+    if (m.kindKey === 'character') created = await characterAPI.duplicate(m.id)
+    else if (m.kindKey === 'scene') created = await sceneAPI.duplicate(m.id)
+    else created = await propAPI.duplicate(m.id)
+    toast.success(`已复制${m.kind || '素材'}`)
+    await load()
+    const fresh = materials.value.find(x => x.kindKey === m.kindKey && x.id === created?.id)
+    if (fresh) openEdit(fresh)
+    else if (created?.id) openEdit({ ...created, kind: m.kind, kindKey: m.kindKey })
+  } catch (e) {
+    toast.error(e.message || '复制失败')
+  } finally {
+    duplicatingMaterial.value = false
   }
 }
 

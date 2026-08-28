@@ -32,10 +32,14 @@
           :open="wb.assetDelete.open"
           :title="wb.assetDeleteTitle"
           :message="wb.assetDeleteMessage"
-          confirm-text="移除"
+          confirm-text="从本集移除"
           loading-text="移除中..."
           :loading="wb.assetDelete.loading"
+          secondary-confirm-text="从共享库删除"
+          secondary-loading-text="删除中..."
+          :secondary-loading="wb.assetDeleteLibraryLoading"
           @confirm="wb.confirmDeleteAsset"
+          @secondary-confirm="wb.confirmDeleteAssetFromLibrary"
           @cancel="wb.assetDelete.open = false"
         />
         <ConfirmDialog

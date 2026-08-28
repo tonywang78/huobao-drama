@@ -134,7 +134,7 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
   const imageViewer = ref({ open: false, src: '', title: '' })
   const activeMerge = ref(null) // 成片大预览弹窗中正在播放的拼接记录
   const assetDetail = ref({ open: false, type: '', item: null })
-  const assetDetailDraft = ref({ appearance: '', styling: '', prompt: '', lighting: '', description: '' })
+  const assetDetailDraft = ref({ name: '', role: '', type: '', location: '', time: '', appearance: '', styling: '', prompt: '', lighting: '', description: '' })
   const assetHistoryType = computed(() => (assetDetail.value.open ? assetDetail.value.type : ''))
   const assetHistoryItem = computed(() => assetDetail.value.item)
   const {
@@ -176,6 +176,11 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     if (!item) return
     assetDetail.value = { open: true, type, item }
     assetDetailDraft.value = {
+      name: item.name || '',
+      role: item.role || '',
+      type: item.type || '',
+      location: item.location || '',
+      time: item.time || '',
       appearance: item.appearance || '',
       styling: item.styling || '',
       prompt: item.prompt || (type === 'prop' ? '' : item.description) || '',
@@ -189,7 +194,7 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
 
   function closeAssetDetail() {
     assetDetail.value = { open: false, type: '', item: null }
-    assetDetailDraft.value = { appearance: '', styling: '', prompt: '', lighting: '', description: '' }
+    assetDetailDraft.value = { name: '', role: '', type: '', location: '', time: '', appearance: '', styling: '', prompt: '', lighting: '', description: '' }
     assetPromptDraft.value = ''
     assetPromptDirty.value = false
     assetEditPrompt.value = ''
@@ -292,17 +297,30 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     }
   }
 
-  // ─── 从本集移除资产（断链，不软删实体） ──────────────────────
-  const assetDelete = ref({ open: false, mode: 'single', type: '', item: null, count: 0, loading: false })
+  // ─── 从本集移除资产（断链）/ 从共享库永久删除 ──────────────────────
+  const assetDelete = ref({
+    open: false,
+    mode: 'single',
+    type: '',
+    item: null,
+    count: 0,
+    loading: false,
+    /** 'unlink' | 'library' — 当前进行中的操作，用于双按钮 loading 态 */
+    action: '',
+  })
   const assetDeleteTypeLabel = computed(() => ASSET_TYPE_SHORT[assetDelete.value.type] || '资产')
   const assetDeleteName = computed(() => assetDelete.value.item?.name || assetDelete.value.item?.location || '')
   const assetDeleteTitle = computed(() =>
-    assetDelete.value.mode === 'batch' ? '从本集移除资产' : `从本集移除${assetDeleteTypeLabel.value}`,
+    assetDelete.value.mode === 'batch' ? '删除资产' : `删除${assetDeleteTypeLabel.value}`,
   )
-  const assetDeleteMessage = computed(() =>
-    assetDelete.value.mode === 'batch'
-      ? `确定将 ${assetDelete.value.count} 个资产从本集移除吗？其他集与项目素材库仍保留。`
-      : `确定将${assetDeleteTypeLabel.value}「${assetDeleteName.value}」从本集移除吗？其他集与项目素材库仍保留。`,
+  const assetDeleteMessage = computed(() => {
+    const subject = assetDelete.value.mode === 'batch'
+      ? `这 ${assetDelete.value.count} 个资产`
+      : `${assetDeleteTypeLabel.value}「${assetDeleteName.value}」`
+    return `可将${subject}从本集移除（其他集与项目素材库仍保留），或从共享库永久删除（本剧所有集一并移除，不可恢复）。`
+  })
+  const assetDeleteLibraryLoading = computed(() =>
+    assetDelete.value.loading && assetDelete.value.action === 'library',
   )
 
   const assetSelectMode = ref(false)
@@ -360,7 +378,30 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
   }
 
   function askDeleteAsset(type, item) {
-    assetDelete.value = { open: true, mode: 'single', type, item, count: 0, loading: false }
+    assetDelete.value = { open: true, mode: 'single', type, item, count: 0, loading: false, action: '' }
+  }
+
+  const duplicatingAsset = ref(false)
+
+  async function duplicateAsset(type, item) {
+    if (!item?.id || duplicatingAsset.value || !epId.value) return
+    duplicatingAsset.value = true
+    try {
+      const payload = { episode_id: epId.value }
+      let created
+      if (type === 'character') created = await characterAPI.duplicate(item.id, payload)
+      else if (type === 'scene') created = await sceneAPI.duplicate(item.id, payload)
+      else created = await propAPI.duplicate(item.id, payload)
+      toast.success(`已复制${assetTypeLabel(type)}`)
+      await refresh()
+      const list = type === 'character' ? chars.value : type === 'scene' ? scenes.value : propItems.value
+      const fresh = list.find(x => x.id === created?.id) || created
+      if (fresh?.id) openAssetDetail(type, fresh)
+    } catch (e) {
+      toast.error(e.message || '复制失败')
+    } finally {
+      duplicatingAsset.value = false
+    }
   }
 
   function askBatchDeleteAssets() {
@@ -372,7 +413,14 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
       item: null,
       count: selectedAssetCount.value,
       loading: false,
+      action: '',
     }
+  }
+
+  async function hardDeleteAssetEntity(type, id) {
+    if (type === 'character') await characterAPI.del(id)
+    else if (type === 'scene') await sceneAPI.del(id)
+    else await propAPI.del(id)
   }
 
   async function confirmDeleteAsset() {
@@ -383,6 +431,7 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     const { type, item } = assetDelete.value
     if (!item || assetDelete.value.loading || !epId.value) return
     assetDelete.value.loading = true
+    assetDelete.value.action = 'unlink'
     try {
       if (type === 'character') await episodeAPI.unlinkCharacter(epId.value, item.id)
       else if (type === 'scene') await episodeAPI.unlinkScene(epId.value, item.id)
@@ -395,6 +444,30 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
       toast.error(e.message)
     } finally {
       assetDelete.value.loading = false
+      assetDelete.value.action = ''
+    }
+  }
+
+  async function confirmDeleteAssetFromLibrary() {
+    if (assetDelete.value.mode === 'batch') {
+      await confirmBatchDeleteAssetsFromLibrary()
+      return
+    }
+    const { type, item } = assetDelete.value
+    if (!item || assetDelete.value.loading) return
+    assetDelete.value.loading = true
+    assetDelete.value.action = 'library'
+    try {
+      await hardDeleteAssetEntity(type, item.id)
+      toast.success(`已从共享库删除${assetDeleteTypeLabel.value}`)
+      assetDelete.value.open = false
+      if (assetDetail.value.open && assetDetail.value.type === type && assetDetail.value.item?.id === item.id) closeAssetDetail()
+      await refresh()
+    } catch (e) {
+      toast.error(e.message || '删除失败')
+    } finally {
+      assetDelete.value.loading = false
+      assetDelete.value.action = ''
     }
   }
 
@@ -404,6 +477,7 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     if (!payload.character_ids.length && !payload.scene_ids.length && !payload.prop_ids.length) return
     const count = assetDelete.value.count
     assetDelete.value.loading = true
+    assetDelete.value.action = 'unlink'
     try {
       await episodeAPI.unlinkAssets(epId.value, payload)
       toast.success(`已从本集移除 ${count} 个资产`)
@@ -415,6 +489,34 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
       toast.error(e.message)
     } finally {
       assetDelete.value.loading = false
+      assetDelete.value.action = ''
+    }
+  }
+
+  async function confirmBatchDeleteAssetsFromLibrary() {
+    if (assetDelete.value.loading) return
+    const payload = selectedAssetsPayload()
+    const jobs = [
+      ...payload.character_ids.map(id => ({ type: 'character', id })),
+      ...payload.scene_ids.map(id => ({ type: 'scene', id })),
+      ...payload.prop_ids.map(id => ({ type: 'prop', id })),
+    ]
+    if (!jobs.length) return
+    const count = assetDelete.value.count
+    assetDelete.value.loading = true
+    assetDelete.value.action = 'library'
+    try {
+      for (const job of jobs) await hardDeleteAssetEntity(job.type, job.id)
+      toast.success(`已从共享库删除 ${count} 个资产`)
+      assetDelete.value.open = false
+      exitAssetSelectMode()
+      if (assetDetail.value.open) closeAssetDetail()
+      await refresh()
+    } catch (e) {
+      toast.error(e.message || '删除失败')
+    } finally {
+      assetDelete.value.loading = false
+      assetDelete.value.action = ''
     }
   }
 
@@ -539,15 +641,22 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     const detail = assetDetail.value
     if (!detail?.open || !detail.item?.id) return null
     const item = detail.item
+    const draft = assetDetailDraft.value
     const payload = {}
     if (detail.type === 'character') {
-      if (assetDetailDraft.value.appearance !== (item.appearance || '')) payload.appearance = assetDetailDraft.value.appearance
-      if (assetDetailDraft.value.styling !== (item.styling || '')) payload.styling = assetDetailDraft.value.styling
+      if ((draft.name || '').trim() !== (item.name || '')) payload.name = (draft.name || '').trim()
+      if ((draft.role || '') !== (item.role || '')) payload.role = draft.role || ''
+      if (draft.appearance !== (item.appearance || '')) payload.appearance = draft.appearance
+      if (draft.styling !== (item.styling || '')) payload.styling = draft.styling
     } else if (detail.type === 'scene') {
-      if (assetDetailDraft.value.prompt !== (item.prompt || '')) payload.prompt = assetDetailDraft.value.prompt
-      if (assetDetailDraft.value.lighting !== (item.lighting || '')) payload.lighting = assetDetailDraft.value.lighting
-    } else if (assetDetailDraft.value.description !== (item.description || '')) {
-      payload.description = assetDetailDraft.value.description
+      if ((draft.location || '').trim() !== (item.location || '')) payload.location = (draft.location || '').trim()
+      if ((draft.time || '') !== (item.time || '')) payload.time = draft.time || ''
+      if (draft.prompt !== (item.prompt || '')) payload.prompt = draft.prompt
+      if (draft.lighting !== (item.lighting || '')) payload.lighting = draft.lighting
+    } else {
+      if ((draft.name || '').trim() !== (item.name || '')) payload.name = (draft.name || '').trim()
+      if ((draft.type || '') !== (item.type || '')) payload.type = draft.type || ''
+      if (draft.description !== (item.description || '')) payload.description = draft.description
     }
     return { detail, item, payload, infoChanged: Object.keys(payload).length > 0 }
   }
@@ -564,6 +673,11 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     const collected = collectAssetInfoPayload()
     if (!collected) return false
     const { detail, item, payload, infoChanged } = collected
+    const draft = assetDetailDraft.value
+    if (detail.type === 'scene' ? !draft.location?.trim() : !draft.name?.trim()) {
+      toast.warning(detail.type === 'scene' ? '请填写场景地点' : '请填写名称')
+      return false
+    }
     if (!infoChanged) return true
     payload.final_prompt = ''
     try {
@@ -612,6 +726,11 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     const collected = collectAssetInfoPayload()
     if (!collected) return
     const { detail, item, payload, infoChanged } = collected
+    const draft = assetDetailDraft.value
+    if (detail.type === 'scene' ? !draft.location?.trim() : !draft.name?.trim()) {
+      toast.warning(detail.type === 'scene' ? '请填写场景地点' : '请填写名称')
+      return
+    }
     // 手动编辑过最终提示词才提交；信息字段变更时清空旧最终提示词，下次生成会按新描述重写
     if (assetPromptDirty.value) payload.final_prompt = assetPromptDraft.value.trim() || ''
     else if (infoChanged) payload.final_prompt = ''
@@ -2630,10 +2749,12 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     isCurrentAssetImage, previewAssetHistoryImage, setAssetAsMainImage, removeAssetHistoryImage,
     assetCreate, assetCreateDraft, assetCreateTypeLabel, openAssetCreate, saveAssetCreate,
     assetPick, assetPickTypeLabel, openAssetPick, toggleAssetPick, confirmAssetPick, assetPickSubtitle,
-    assetDelete, assetDeleteTypeLabel, assetDeleteName, assetDeleteTitle, assetDeleteMessage, confirmDeleteAsset,
+    assetDelete, assetDeleteTypeLabel, assetDeleteName, assetDeleteTitle, assetDeleteMessage,
+    assetDeleteLibraryLoading, confirmDeleteAsset, confirmDeleteAssetFromLibrary,
     assetSelectMode, selectedAssetCount, allAssetsSelected, isAssetSelected, enterAssetSelectMode, exitAssetSelectMode,
     toggleAssetSelect, toggleSelectAllAssets, onAssetCardClick, askBatchDeleteAssets,
     sbDelete, confirmDeleteStoryboard, askDeleteStoryboard, askDeleteAsset,
+    duplicateAsset, duplicatingAsset,
     imageViewer, closeImageViewer, activeMerge, handleImageViewerKeydown,
     visualChars, lockedImageConfigLabel, lockedVideoConfigLabel, lockedFirstLastConfigLabel, hasFirstLastService,
     assetReadyCount, assetTotalCount, batchCharImages, batchSceneImages, batchPropImages,

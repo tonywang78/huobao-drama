@@ -1,6 +1,6 @@
 <template>
   <div class="model-select" ref="rootEl">
-    <span class="model-select-label">{{ label }}</span>
+    <span v-if="label" class="model-select-label">{{ label }}</span>
     <button type="button" class="model-select-trigger" :class="{ open: isOpen }" @click="toggle">
       <span v-if="currentOption?.provider" class="model-select-provider">{{ currentOption.provider }}</span>
       <span class="model-select-value">{{ currentLabel }}</span>

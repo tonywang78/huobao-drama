@@ -15,12 +15,16 @@ const wb = useEpisodeWorkbenchInject()
           <header class="dialog-head asset-detail-head">
             <div class="asset-detail-title-block">
               <span class="asset-detail-kicker">{{ wb.assetTypeLabel(wb.assetDetail.type) }}</span>
-              <h2 class="asset-detail-title">{{ wb.assetDetailTitle(wb.assetDetail) }}</h2>
+              <h2 class="asset-detail-title">{{
+                wb.assetDetail.type === 'scene'
+                  ? (wb.assetDetailDraft.location || wb.assetDetailTitle(wb.assetDetail))
+                  : (wb.assetDetailDraft.name || wb.assetDetailTitle(wb.assetDetail))
+              }}</h2>
             </div>
             <div class="asset-detail-head-actions">
-              <span class="tag" v-if="wb.assetDetail.type === 'character'">{{ wb.assetDetail.item.role || '角色' }}</span>
-              <span class="tag" v-else-if="wb.assetDetail.type === 'prop'">{{ wb.assetDetail.item.type || '道具' }}</span>
-              <span class="tag" v-else>{{ wb.assetDetail.item.time || '未设时间' }}</span>
+              <span class="tag" v-if="wb.assetDetail.type === 'character'">{{ wb.assetDetailDraft.role || wb.assetDetail.item.role || '角色' }}</span>
+              <span class="tag" v-else-if="wb.assetDetail.type === 'prop'">{{ wb.assetDetailDraft.type || wb.assetDetail.item.type || '道具' }}</span>
+              <span class="tag" v-else>{{ wb.assetDetailDraft.time || wb.assetDetail.item.time || '未设时间' }}</span>
               <button class="btn btn-ghost btn-icon" @click="wb.closeAssetDetail">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
@@ -63,7 +67,7 @@ const wb = useEpisodeWorkbenchInject()
                   </div>
                   <div class="asset-detail-meta-item">
                     <span>{{ wb.assetDetail.type === 'character' ? '定位' : wb.assetDetail.type === 'prop' ? '道具类型' : '时间' }}</span>
-                    <strong>{{ wb.assetDetail.type === 'character' ? (wb.assetDetail.item.role || '角色') : wb.assetDetail.type === 'prop' ? (wb.assetDetail.item.type || '道具') : (wb.assetDetail.item.time || '未设时间') }}</strong>
+                    <strong>{{ wb.assetDetail.type === 'character' ? (wb.assetDetailDraft.role || wb.assetDetail.item.role || '角色') : wb.assetDetail.type === 'prop' ? (wb.assetDetailDraft.type || wb.assetDetail.item.type || '道具') : (wb.assetDetailDraft.time || wb.assetDetail.item.time || '未设时间') }}</strong>
                   </div>
                 </div>
 
@@ -85,6 +89,14 @@ const wb = useEpisodeWorkbenchInject()
 
                 <div v-if="wb.assetDetail.type === 'prop'" class="asset-detail-edit-grid asset-detail-edit-grid--prop">
                   <label class="asset-detail-edit-field">
+                    <span>名称</span>
+                    <input v-model="wb.assetDetailDraft.name" class="input" placeholder="道具名称" />
+                  </label>
+                  <label class="asset-detail-edit-field">
+                    <span>类型</span>
+                    <input v-model="wb.assetDetailDraft.type" class="input" placeholder="如：武器 / 信物" />
+                  </label>
+                  <label class="asset-detail-edit-field">
                     <span>物品外貌</span>
                     <textarea
                       v-model="wb.assetDetailDraft.description"
@@ -96,42 +108,62 @@ const wb = useEpisodeWorkbenchInject()
                 </div>
 
                 <div v-else :class="['asset-detail-edit-grid', `asset-detail-edit-grid--${wb.assetDetail.type}`]">
-                  <label v-if="wb.assetDetail.type === 'character'" class="asset-detail-edit-field">
-                    <span>样貌</span>
-                    <textarea
-                      v-model="wb.assetDetailDraft.appearance"
-                      class="textarea asset-detail-textarea"
-                      rows="6"
-                      placeholder="年龄感、五官、体态、气质等"
-                    />
-                  </label>
-                  <label v-if="wb.assetDetail.type === 'character'" class="asset-detail-edit-field">
-                    <span>妆造</span>
-                    <textarea
-                      v-model="wb.assetDetailDraft.styling"
-                      class="textarea asset-detail-textarea"
-                      rows="6"
-                      placeholder="发型、服装、妆面、配饰等"
-                    />
-                  </label>
-                  <label v-if="wb.assetDetail.type === 'scene'" class="asset-detail-edit-field">
-                    <span>场景描述</span>
-                    <textarea
-                      v-model="wb.assetDetailDraft.prompt"
-                      class="textarea asset-detail-textarea"
-                      rows="5"
-                      placeholder="空间、陈设、年代质感、关键视觉元素等"
-                    />
-                  </label>
-                  <label v-if="wb.assetDetail.type === 'scene'" class="asset-detail-edit-field">
-                    <span>场景光影</span>
-                    <textarea
-                      v-model="wb.assetDetailDraft.lighting"
-                      class="textarea asset-detail-textarea"
-                      rows="5"
-                      placeholder="光源、色调、明暗、氛围等"
-                    />
-                  </label>
+                  <template v-if="wb.assetDetail.type === 'character'">
+                    <label class="asset-detail-edit-field">
+                      <span>名称</span>
+                      <input v-model="wb.assetDetailDraft.name" class="input" placeholder="角色名" />
+                    </label>
+                    <label class="asset-detail-edit-field">
+                      <span>定位</span>
+                      <input v-model="wb.assetDetailDraft.role" class="input" placeholder="主角 / 反派 / 配角…" />
+                    </label>
+                    <label class="asset-detail-edit-field">
+                      <span>样貌</span>
+                      <textarea
+                        v-model="wb.assetDetailDraft.appearance"
+                        class="textarea asset-detail-textarea"
+                        rows="6"
+                        placeholder="年龄感、五官、体态、气质等"
+                      />
+                    </label>
+                    <label class="asset-detail-edit-field">
+                      <span>妆造</span>
+                      <textarea
+                        v-model="wb.assetDetailDraft.styling"
+                        class="textarea asset-detail-textarea"
+                        rows="6"
+                        placeholder="发型、服装、妆面、配饰等"
+                      />
+                    </label>
+                  </template>
+                  <template v-else>
+                    <label class="asset-detail-edit-field">
+                      <span>地点</span>
+                      <input v-model="wb.assetDetailDraft.location" class="input" placeholder="如：故宫太和殿" />
+                    </label>
+                    <label class="asset-detail-edit-field">
+                      <span>时间</span>
+                      <input v-model="wb.assetDetailDraft.time" class="input" placeholder="如：黄昏 / 深夜" />
+                    </label>
+                    <label class="asset-detail-edit-field">
+                      <span>场景描述</span>
+                      <textarea
+                        v-model="wb.assetDetailDraft.prompt"
+                        class="textarea asset-detail-textarea"
+                        rows="5"
+                        placeholder="空间、陈设、年代质感、关键视觉元素等"
+                      />
+                    </label>
+                    <label class="asset-detail-edit-field">
+                      <span>场景光影</span>
+                      <textarea
+                        v-model="wb.assetDetailDraft.lighting"
+                        class="textarea asset-detail-textarea"
+                        rows="5"
+                        placeholder="光源、色调、明暗、氛围等"
+                      />
+                    </label>
+                  </template>
                 </div>
 
               </section>
@@ -219,6 +251,14 @@ const wb = useEpisodeWorkbenchInject()
           <footer class="dialog-foot asset-detail-foot">
             <div class="asset-detail-secondary-actions">
               <button class="btn btn-danger" @click="wb.askDeleteAsset(wb.assetDetail.type, wb.assetDetail.item)">从本集移除</button>
+              <button
+                class="btn"
+                :disabled="wb.duplicatingAsset"
+                @click="wb.duplicateAsset(wb.assetDetail.type, wb.assetDetail.item)"
+              >
+                <Loader2 v-if="wb.duplicatingAsset" :size="11" class="animate-spin" />
+                复制资产
+              </button>
               <button class="btn" @click="wb.closeAssetDetail">关闭</button>
             </div>
             <div class="asset-detail-primary-actions">

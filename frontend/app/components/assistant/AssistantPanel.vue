@@ -1,5 +1,5 @@
 <script setup>
-import { ArrowLeft, Bot, BookmarkPlus, Copy, ImagePlus, Loader2, Paperclip, Pencil, Send, Sparkles, Trash2, Wand2, X, ZoomIn } from 'lucide-vue-next'
+import { ArrowLeft, Bot, BookmarkPlus, Brain, ChevronDown, Copy, ImagePlus, Loader2, Paperclip, Pencil, Send, Sparkles, Trash2, Wand2, X, ZoomIn } from 'lucide-vue-next'
 import ModelSelect from '~/components/ModelSelect.vue'
 import MentionTextarea from '~/components/MentionTextarea.vue'
 import ConfirmDialog from '~/components/ConfirmDialog.vue'
@@ -172,33 +172,49 @@ function preselectedAssetLabel() {
     aria-label="工作室助手"
   >
     <header class="assistant-head">
-      <div class="assistant-head-title">
-        <Sparkles :size="14" />
-        <span>助手</span>
+      <div class="assistant-head-bar">
+        <div class="assistant-head-title">
+          <Sparkles :size="14" />
+          <span>助手</span>
+        </div>
+        <div class="assistant-head-actions">
+          <button
+            v-if="a.messages.length"
+            class="btn btn-ghost btn-icon"
+            type="button"
+            title="清空历史对话"
+            aria-label="清空历史对话"
+            :disabled="a.sending || a.clearing"
+            @click="clearConfirmOpen = true"
+          >
+            <Trash2 :size="14" />
+          </button>
+          <button class="btn btn-ghost btn-icon" type="button" aria-label="关闭助手" @click="a.open = false">
+            <X :size="14" />
+          </button>
+        </div>
       </div>
-      <div class="assistant-head-actions">
+      <div v-if="a.textModelOptions.length" class="assistant-toolbar">
         <ModelSelect
-          v-if="a.textModelOptions.length"
+          class="assistant-model-select"
           :model-value="a.chatModel"
-          label="文本"
+          label=""
           :options="a.textModelOptions"
           :default-label="`默认 · ${a.textModelOptions[0].model}`"
           :show-config="a.textModelMultiCfg"
           @update:model-value="a.setChatModel"
         />
         <button
-          v-if="a.messages.length"
-          class="btn btn-ghost btn-icon"
           type="button"
-          title="清空历史对话"
-          aria-label="清空历史对话"
-          :disabled="a.sending || a.clearing"
-          @click="clearConfirmOpen = true"
+          class="assistant-thinking-toggle"
+          :class="{ 'is-on': a.enableThinking }"
+          :title="a.enableThinking ? '思考已开：会显示思考过程（更慢）' : '思考已关：更快，不显示思考过程'"
+          :aria-pressed="a.enableThinking ? 'true' : 'false'"
+          aria-label="思考模式"
+          @click="a.setEnableThinking(!a.enableThinking)"
         >
-          <Trash2 :size="14" />
-        </button>
-        <button class="btn btn-ghost btn-icon" type="button" aria-label="关闭助手" @click="a.open = false">
-          <X :size="14" />
+          <Brain :size="14" />
+          <span>思考</span>
         </button>
       </div>
     </header>
@@ -233,6 +249,24 @@ function preselectedAssetLabel() {
                 :alt="att.name || '附图'"
                 @error="thumbFallback($event, att.url)"
               />
+            </div>
+            <div
+              v-if="msg.role === 'assistant' && msg.content.reasoning"
+              class="assistant-reasoning"
+            >
+              <button
+                type="button"
+                class="assistant-reasoning-toggle"
+                @click="msg.reasoningOpen = !msg.reasoningOpen"
+              >
+                <Brain :size="12" />
+                <span>{{ msg.streaming && !msg.content.text ? '思考中…' : '思考过程' }}</span>
+                <ChevronDown
+                  :size="12"
+                  :class="['assistant-reasoning-chevron', { 'is-open': msg.reasoningOpen }]"
+                />
+              </button>
+              <div v-show="msg.reasoningOpen" class="assistant-reasoning-body">{{ msg.content.reasoning }}</div>
             </div>
             <div
               v-if="msg.content.text || msg.streaming"

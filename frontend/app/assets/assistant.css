@@ -29,12 +29,18 @@
 
 .assistant-head {
   display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--surface-outline);
+  flex-shrink: 0;
+}
+.assistant-head-bar {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--surface-outline);
-  flex-shrink: 0;
 }
 .assistant-head-title {
   display: flex;
@@ -47,7 +53,93 @@
 .assistant-head-actions {
   display: flex;
   align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.assistant-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 10px;
+  min-width: 0;
+}
+.assistant-toolbar .assistant-model-select {
+  flex: 1;
+  min-width: 0;
+}
+.assistant-toolbar :deep(.model-select) {
+  width: 100%;
+  min-width: 0;
+}
+.assistant-toolbar :deep(.model-select-trigger) {
+  width: 100%;
+  max-width: none;
+}
+.assistant-thinking-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--surface-outline);
+  border-radius: 999px;
+  background: var(--bg-input, transparent);
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.assistant-thinking-toggle:hover {
+  color: var(--text-1);
+  background: var(--bg-hover);
+}
+.assistant-thinking-toggle.is-on {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--surface-outline));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.assistant-reasoning {
+  margin-bottom: 8px;
+  border: 1px solid var(--surface-outline);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-1) 70%, transparent);
+  overflow: hidden;
+}
+.assistant-reasoning-toggle {
+  display: flex;
+  align-items: center;
   gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 11px;
+  cursor: pointer;
+  text-align: left;
+}
+.assistant-reasoning-toggle:hover {
+  color: var(--text-1);
+}
+.assistant-reasoning-chevron {
+  margin-left: auto;
+  transition: transform 0.15s;
+}
+.assistant-reasoning-chevron.is-open {
+  transform: rotate(180deg);
+}
+.assistant-reasoning-body {
+  padding: 0 8px 8px;
+  max-height: 180px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-3);
 }
 
 .assistant-body {
