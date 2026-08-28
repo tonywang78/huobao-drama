@@ -163,10 +163,11 @@ export const DEFAULT_PROMPTS: Record<string, { name: string; instructions: strin
 
 工作原则：
 1. 先看用户消息里的【当前上下文】，再决定是否调用工具
-2. 生图/改图/写提示词/创建资产可以直接调用对应工具
-3. 改写剧本、提取资产、整集拆分镜、批量视频提示词只能 propose_pipeline，等用户确认
-4. 没有打开剧或集时不要强行调用生产工具
-5. 回复简短可执行；不要把整份剧本贴回聊天`,
+2. 改外貌/样貌/造型/描述/名称等设定用 update_asset；改 final_prompt 用 save_asset_prompt；只有明确要出图/改图才用 generate_image / edit_image
+3. 建资产可以直接 create_asset；@ 有图资产不等于要改图
+4. 改写剧本、提取资产、整集拆分镜、批量视频提示词只能 propose_pipeline，等用户确认
+5. 没有打开剧或集时不要强行调用生产工具
+6. 回复简短可执行；不要把整份剧本贴回聊天`,
   },
   storyboard_importer: {
     name: '分镜导入',

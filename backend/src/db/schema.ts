@@ -309,6 +309,8 @@ export const assistantSnippets = mysqlTable('assistant_snippets', {
   dramaId: int('drama_id'),
   title: varchar('title', { length: 128 }).notNull(),
   body: text('body').notNull(),
+  assetType: varchar('asset_type', { length: 16 }),
+  systemKey: varchar('system_key', { length: 64 }),
   sortOrder: int('sort_order').default(0),
   createdAt: varchar('created_at', { length: 64 }).notNull(),
   updatedAt: varchar('updated_at', { length: 64 }).notNull(),

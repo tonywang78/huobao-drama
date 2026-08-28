@@ -117,10 +117,10 @@ export function useStudioAssistant() {
     hintRefs: [] as Array<{ type: string; id: number; name?: string }>,
   }))
   const snippetSave = useState('assistant-snippet-save', () => ({
-    open: false, title: '', body: '', scope: 'global' as 'project' | 'global',
+    open: false, title: '', body: '', scope: 'global' as 'project' | 'global', assetType: '' as string,
   }))
   const snippetEdit = useState('assistant-snippet-edit', () => ({
-    open: false, id: 0, title: '', body: '', scope: 'global' as 'project' | 'global',
+    open: false, id: 0, title: '', body: '', scope: 'global' as 'project' | 'global', assetType: '' as string,
   }))
 
   const textModelOptions = computed(() => wb?.textModelOptions?.length
@@ -370,6 +370,7 @@ export function useStudioAssistant() {
       title: text.slice(0, 20).replace(/\s+/g, ' '),
       body: text,
       scope: currentDramaId.value ? 'project' : 'global',
+      assetType: '',
     }
   }
 
@@ -384,7 +385,12 @@ export function useStudioAssistant() {
       return
     }
     try {
-      await assistantAPI.createSnippet({ title, body: text, drama_id: dramaId })
+      await assistantAPI.createSnippet({
+        title,
+        body: text,
+        drama_id: dramaId,
+        asset_type: snippetSave.value.assetType || null,
+      })
       snippetSave.value.open = false
       toast.success('已加入常用')
       await loadSnippets()
@@ -400,6 +406,7 @@ export function useStudioAssistant() {
       title: snippet.title || '',
       body: snippet.body || '',
       scope: snippet.drama_id ? 'project' : 'global',
+      assetType: snippet.asset_type || '',
     }
   }
 
@@ -414,13 +421,26 @@ export function useStudioAssistant() {
       return
     }
     try {
-      await assistantAPI.updateSnippet(form.id, { title, body, drama_id: dramaId })
+      await assistantAPI.updateSnippet(form.id, {
+        title,
+        body,
+        drama_id: dramaId,
+        asset_type: form.assetType || null,
+      })
       snippetEdit.value.open = false
       toast.success('已更新')
       await loadSnippets()
     } catch (err) {
       toast.error(err.message || '更新失败')
     }
+  }
+
+  function snippetsForAssetType(assetType: string) {
+    return filterSnippetsForAssetType(snippets.value, assetType)
+  }
+
+  function snippetAssetTypeLabel(assetType?: string | null) {
+    return SNIPPET_ASSET_TYPE_LABEL[String(assetType || '')] || '通用'
   }
 
   async function removeSnippet(id) {
@@ -1084,6 +1104,20 @@ export function useStudioAssistant() {
     openImagePreview, closeImagePreview, continueEditArtifact, openAssetDialog, pickAssetMode, pickAssetType,
     pickAssetTarget, assetDialogBack, closeAssetDialog, submitAssetDialog, resolveMessageRefs, loadThread, loadSnippets, clearHistory, mediaUrl,
     applySnippet, openSaveSnippet, submitSaveSnippet, openEditSnippet, submitEditSnippet, removeSnippet,
+    snippetsForAssetType, snippetAssetTypeLabel,
     copyMessageText,
   })
+}
+
+/** 图生图旁 / 助手：按资产类型过滤（含通用 NULL） */
+export function filterSnippetsForAssetType(list: Array<{ asset_type?: string | null }>, assetType: string) {
+  const t = String(assetType || '').trim()
+  if (!t) return list || []
+  return (list || []).filter(s => !s.asset_type || s.asset_type === t)
+}
+
+export const SNIPPET_ASSET_TYPE_LABEL: Record<string, string> = {
+  character: '角色',
+  scene: '场景',
+  prop: '道具',
 }

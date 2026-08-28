@@ -725,6 +725,9 @@
   font-size: 10px;
   font-weight: 550;
   line-height: 1.4;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: var(--text-0);
   cursor: pointer;
   max-width: 120px;
@@ -732,6 +735,22 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.assistant-snippet-pill-type {
+  opacity: 0.72;
+  font-weight: 500;
+}
+.assistant-snippet-type-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  font-size: 10px;
+  font-weight: 550;
+  color: var(--text-3);
+  vertical-align: middle;
 }
 .assistant-snippet-pill:hover {
   background: var(--accent-bg);

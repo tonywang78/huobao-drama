@@ -1,7 +1,38 @@
 <script setup>
+import { computed, ref, watch } from 'vue'
 import { Loader2, Plus, X, ListTodo, Upload, Play, MapPin } from 'lucide-vue-next'
 import AssetImageHistoryList from '~/components/AssetImageHistoryList.vue'
+import { assistantAPI } from '~/composables/useApi'
+import { filterSnippetsForAssetType } from '~/composables/useStudioAssistant'
 const wb = useEpisodeWorkbenchInject()
+
+const assetEditSnippets = ref([])
+const assetEditSnippetChips = computed(() => {
+  const type = wb.assetDetail.type
+  if (type !== 'character' && type !== 'scene') return []
+  return filterSnippetsForAssetType(assetEditSnippets.value, type)
+})
+
+async function loadAssetEditSnippets() {
+  const dramaId = wb.dramaId || null
+  try {
+    const data = await assistantAPI.listSnippets(dramaId || undefined)
+    assetEditSnippets.value = data.items || []
+  } catch {
+    assetEditSnippets.value = []
+  }
+}
+
+function applyAssetEditSnippet(snip) {
+  wb.assetEditPrompt = String(snip?.body || '')
+}
+
+watch(
+  () => wb.assetDetail.open,
+  (open) => {
+    if (open) loadAssetEditSnippets()
+  },
+)
 </script>
 
 <template>
@@ -218,6 +249,19 @@ const wb = useEpisodeWorkbenchInject()
               <div class="asset-detail-section-title">
                 <span>改图 · 图生图</span>
                 <span v-if="wb.lockedImg2imgConfigLabel" class="tag tag-accent">{{ wb.lockedImg2imgConfigLabel }}</span>
+              </div>
+              <div v-if="assetEditSnippetChips.length" class="asset-edit-snippet-chips">
+                <button
+                  v-for="snip in assetEditSnippetChips"
+                  :key="snip.id"
+                  type="button"
+                  class="asset-edit-snippet-chip"
+                  :title="snip.body"
+                  :disabled="!wb.assetImageSrc(wb.assetDetail.item) || wb.isAssetImagePending(wb.assetDetail.type, wb.assetDetail.item.id)"
+                  @click="applyAssetEditSnippet(snip)"
+                >
+                  {{ snip.title }}
+                </button>
               </div>
               <textarea
                 v-model="wb.assetEditPrompt"

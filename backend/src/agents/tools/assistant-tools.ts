@@ -331,6 +331,70 @@ const saveAssetPrompt = createTool({
   },
 })
 
+const updateAsset = createTool({
+  id: 'update_asset',
+  description:
+    '更新已有角色/场景/道具的文本设定字段（外貌、造型、描述、名称等）。只改传入的字段，不生图。改最终提示词请用 save_asset_prompt；要出图/改图请用 generate_image / edit_image。',
+  inputSchema: z.object({
+    type: z.enum(['character', 'scene', 'prop']),
+    id: z.number(),
+    name: z.string().optional().describe('角色名 / 场景地点 / 道具名'),
+    role: z.string().optional().describe('角色身份'),
+    appearance: z.string().optional().describe('角色样貌'),
+    styling: z.string().optional().describe('角色造型/服装'),
+    time: z.string().optional().describe('场景时间'),
+    prompt: z.string().optional().describe('场景描述（写入 scenes.prompt）'),
+    lighting: z.string().optional().describe('场景灯光'),
+    prop_type: z.string().optional().describe('道具类型'),
+    description: z.string().optional().describe('道具外貌描述；场景也可用作 prompt 别名'),
+  }),
+  execute: async (input, context) => {
+    const dramaId = getDramaId(context?.requestContext)
+    const missing = needDrama(dramaId)
+    if (missing) return missing
+    const { type, id } = input
+    const ts = now()
+    const applied: string[] = []
+
+    if (type === 'character') {
+      const [c] = await db.select().from(schema.characters).where(eq(schema.characters.id, id))
+      if (!c || c.dramaId !== dramaId || c.deletedAt) return { error: '角色不存在' }
+      const updates: Record<string, unknown> = { updatedAt: ts }
+      if (input.name !== undefined) { updates.name = input.name.trim(); applied.push('name') }
+      if (input.role !== undefined) { updates.role = input.role; applied.push('role') }
+      if (input.appearance !== undefined) { updates.appearance = input.appearance; applied.push('appearance') }
+      if (input.styling !== undefined) { updates.styling = input.styling; applied.push('styling') }
+      if (!applied.length) return { error: '未提供任何可更新字段' }
+      await db.update(schema.characters).set(updates).where(eq(schema.characters.id, id))
+      return { updated: true, saved: true, type, id, fields: applied }
+    }
+
+    if (type === 'scene') {
+      const [s] = await db.select().from(schema.scenes).where(eq(schema.scenes.id, id))
+      if (!s || s.dramaId !== dramaId || s.deletedAt) return { error: '场景不存在' }
+      const updates: Record<string, unknown> = { updatedAt: ts }
+      if (input.name !== undefined) { updates.location = input.name.trim(); applied.push('location') }
+      if (input.time !== undefined) { updates.time = input.time; applied.push('time') }
+      if (input.prompt !== undefined) { updates.prompt = input.prompt; applied.push('prompt') }
+      else if (input.description !== undefined) { updates.prompt = input.description; applied.push('prompt') }
+      if (input.lighting !== undefined) { updates.lighting = input.lighting; applied.push('lighting') }
+      if (!applied.length) return { error: '未提供任何可更新字段' }
+      await db.update(schema.scenes).set(updates).where(eq(schema.scenes.id, id))
+      return { updated: true, saved: true, type, id, fields: applied }
+    }
+
+    const [p] = await db.select().from(schema.props).where(eq(schema.props.id, id))
+    if (!p || p.dramaId !== dramaId || p.deletedAt) return { error: '道具不存在' }
+    const updates: Record<string, unknown> = { updatedAt: ts }
+    if (input.name !== undefined) { updates.name = input.name.trim(); applied.push('name') }
+    if (input.prop_type !== undefined) { updates.type = input.prop_type; applied.push('prop_type') }
+    if (input.description !== undefined) { updates.description = input.description; applied.push('description') }
+    if (!applied.length) return { error: '未提供任何可更新字段' }
+    await db.update(schema.props).set(updates).where(eq(schema.props.id, id))
+    return { updated: true, saved: true, type, id, fields: applied }
+  },
+})
+
 const saveVideoPrompt = createTool({
   id: 'save_video_prompt',
   description: '更新单个分镜的 video_prompt，不改动其他字段。',
@@ -456,6 +520,7 @@ export const assistantTools = {
   generateImageTool,
   editImageTool,
   saveAssetPrompt,
+  updateAsset,
   saveVideoPrompt,
   createAsset,
   proposePipeline,

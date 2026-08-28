@@ -12,7 +12,21 @@ import { getDramaStylePrompt } from './style-preset.js'
 import { generateImageEdit } from './generation.js'
 import { logTaskProgress } from '../utils/task-logger.js'
 
-const IMAGE_EDIT_HINT = /去掉|删除|移除|改|换|修|调整|美化|加|减|remove|edit|change|fix|crop|blur|enhance|放大|缩小|背景|人物|人|图生图|改图/i
+import { generateImageEdit } from './generation.js'
+import { logTaskProgress } from '../utils/task-logger.js'
+import {
+  looksLikeFieldEditIntent,
+  looksLikeImageEditIntent,
+  shouldDirectImageEdit,
+  shouldSkipDirectImageEditFallback,
+} from './assistant-image-intent.js'
+
+export {
+  looksLikeFieldEditIntent,
+  looksLikeImageEditIntent,
+  shouldDirectImageEdit,
+  shouldSkipDirectImageEditFallback,
+}
 
 export const HISTORY_LIMIT = 40
 const EXCERPT = 2000
@@ -251,13 +265,32 @@ export async function buildContextSnapshot(ui: AssistantUiContext | undefined, o
     }
   }
 
-  const snippetLines = await formatSnippetsForSnapshot(dramaId, compact ? 40 : 80)
+  const selectedAssetType = sel?.type === 'character' || sel?.type === 'scene' || sel?.type === 'prop'
+    ? sel.type
+    : null
+  const snippetLines = await formatSnippetsForSnapshot(dramaId, {
+    compact,
+    preferAssetType: selectedAssetType,
+  })
   if (snippetLines.length) {
-    lines.push('【常用提示词】（用户保存的快捷操作，可按名称理解意图）')
+    lines.push('【常用提示词】（用户保存的快捷操作与系统模板，可按名称理解意图；带资产类型的条目请优先用于对应资产）')
     lines.push(...snippetLines)
   }
 
   return lines.join('\n')
+}
+
+const ASSET_TYPE_LABEL: Record<string, string> = {
+  character: '角色',
+  scene: '场景',
+  prop: '道具',
+}
+
+export function normalizeSnippetAssetType(raw: unknown): string | null {
+  if (raw == null || raw === '') return null
+  const v = String(raw).trim().toLowerCase()
+  if (v === 'character' || v === 'scene' || v === 'prop') return v
+  throw new Error('asset_type 无效，应为 character / scene / prop 或空')
 }
 
 export function serializeSnippet(row: typeof schema.assistantSnippets.$inferSelect) {
@@ -280,13 +313,32 @@ export async function listSnippets(dramaId?: number | null) {
   return rows.map(serializeSnippet)
 }
 
-async function formatSnippetsForSnapshot(dramaId: number | null, previewLen = 80) {
+async function formatSnippetsForSnapshot(
+  dramaId: number | null,
+  opts?: { compact?: boolean; preferAssetType?: string | null },
+) {
   const items = await listSnippets(dramaId)
   if (!items.length) return []
-  return items.map(s => {
+  const prefer = opts?.preferAssetType || null
+  const ranked = prefer
+    ? [
+        ...items.filter(s => s.asset_type === prefer || !s.asset_type),
+        ...items.filter(s => s.asset_type && s.asset_type !== prefer),
+      ]
+    : items
+  const fullBodyLimit = 1500
+  const previewLen = opts?.compact ? 40 : 80
+  return ranked.map(s => {
     const scope = s.drama_id ? '[本项目]' : '[共享]'
-    const preview = excerpt(String(s.body || ''), previewLen).replace(/\n/g, ' ')
-    return `- ${scope} ${s.title}：${preview}`
+    const typeLabel = s.asset_type
+      ? `[${ASSET_TYPE_LABEL[String(s.asset_type)] || s.asset_type}]`
+      : '[通用]'
+    const body = String(s.body || '')
+    // 带资产类型的模板写入全文，便于助手忠实引用（如「标准化」）
+    const text = s.asset_type
+      ? excerpt(body, fullBodyLimit).replace(/\n/g, ' ')
+      : excerpt(body, previewLen).replace(/\n/g, ' ')
+    return `- ${scope}${typeLabel} ${s.title}：${text}`
   })
 }
 
@@ -319,6 +371,7 @@ export async function createSnippet(opts: {
   title: string
   body: string
   dramaId?: number | null
+  assetType?: string | null
   sortOrder?: number
 }) {
   const title = opts.title.trim()
@@ -330,11 +383,14 @@ export async function createSnippet(opts: {
     const [drama] = await db.select().from(schema.dramas).where(eq(schema.dramas.id, dramaId))
     if (!drama) throw new Error('项目不存在')
   }
+  const assetType = normalizeSnippetAssetType(opts.assetType)
   const ts = now()
   const res = await db.insert(schema.assistantSnippets).values({
     dramaId,
     title,
     body,
+    assetType,
+    systemKey: null,
     sortOrder: opts.sortOrder ?? 0,
     createdAt: ts,
     updatedAt: ts,
@@ -348,6 +404,7 @@ export async function updateSnippet(id: number, patch: {
   title?: string
   body?: string
   dramaId?: number | null
+  assetType?: string | null
   sortOrder?: number
 }) {
   const [existing] = await db.select().from(schema.assistantSnippets)
@@ -366,6 +423,9 @@ export async function updateSnippet(id: number, patch: {
     next.body = body
   }
   if (patch.sortOrder != null) next.sortOrder = Number(patch.sortOrder) || 0
+  if (patch.assetType !== undefined) {
+    next.assetType = normalizeSnippetAssetType(patch.assetType)
+  }
   if (patch.dramaId !== undefined) {
     const dramaId = patch.dramaId && patch.dramaId > 0 ? patch.dramaId : null
     if (dramaId) {
@@ -615,9 +675,9 @@ async function formatRefLines(refs: AssistantRef[] | undefined, dramaId?: number
     if (r.category === 'asset') {
       const base = `- ${tag} ${r.name || ''}`.trim()
       if (r.image_url) {
-        lines.push(`${base}（有参考图 ${r.image_url}；改图/换风格请调用 edit_image，reference_assets: [{ type: "${r.type}", id: ${r.id} }]）`)
+        lines.push(`${base}（有参考图 ${r.image_url}；仅当用户明确要改图/出图时调用 edit_image，reference_assets: [{ type: "${r.type}", id: ${r.id} }]；改外貌/描述等字段用 update_asset）`)
       } else {
-        lines.push(base)
+        lines.push(`${base}（改设定字段请用 update_asset）`)
       }
       continue
     }
@@ -758,6 +818,8 @@ export async function tryDirectImageEdit(opts: {
   dramaId?: number | null
   imageModel?: string
   img2imgConfigId?: number
+  /** 模型已生图但未带用户参考图时，强制用参考图重入队 */
+  forceForRefFallback?: boolean
 }): Promise<{ task_id: number; kind: string; prompt: string; reference_urls: string[] } | null> {
   const dramaId = opts.dramaId && opts.dramaId > 0 ? opts.dramaId : null
   if (!dramaId) return null
@@ -771,21 +833,16 @@ export async function tryDirectImageEdit(opts: {
     return n.category === 'asset' && !!n.id
   })
   const stripped = stripAtTokens(opts.text, opts.refs)
-  const looksLikeEdit = IMAGE_EDIT_HINT.test(stripped) || IMAGE_EDIT_HINT.test(opts.text)
 
-  const hasExplicitImageRef = (opts.refs || []).some(r => {
-    const n = normalizeRef(r)
-    if (n.category === 'generated' && n.image_url) return true
-    if (n.category === 'asset' && n.id && n.image_url) return true
-    return false
-  }) || !!(opts.attachments?.length)
-
-  const shouldEdit = (hasGeneratedRef && !!stripped)
-    || (hasAssetRef && looksLikeEdit)
-    || (opts.attachments?.length && looksLikeEdit)
-    || (!hasGeneratedRef && !hasAssetRef && !!opts.latestGenerated?.url && looksLikeEdit)
-    || (hasExplicitImageRef && !!stripped)
-
+  const shouldEdit = shouldDirectImageEdit({
+    text: opts.text,
+    stripped,
+    hasGeneratedRef,
+    hasAssetRef,
+    hasAttachment: !!(opts.attachments?.length),
+    hasLatestGenerated: !!opts.latestGenerated?.url,
+    forceForRefFallback: !!opts.forceForRefFallback,
+  })
   if (!shouldEdit) return null
 
   let referenceUrls = await collectRefImageUrls(opts.refs, dramaId)
@@ -869,7 +926,7 @@ export function collectToolOutcomes(result: any) {
     if (parsed?.status === 'needs_confirmation' && parsed.action) {
       proposals.push({ action: parsed.action, warning: parsed.warning, reason: parsed.reason })
     }
-    if (parsed?.created || parsed?.saved) didWrite = true
+    if (parsed?.created || parsed?.saved || parsed?.updated) didWrite = true
     return { toolName, result: parsed }
   })
 

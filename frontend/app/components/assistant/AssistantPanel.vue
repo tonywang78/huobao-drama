@@ -374,6 +374,7 @@ function preselectedAssetLabel() {
                 :title="snip.body"
                 @click="a.applySnippet(snip.body)"
               >
+                <span v-if="snip.asset_type" class="assistant-snippet-pill-type">{{ a.snippetAssetTypeLabel(snip.asset_type) }}</span>
                 {{ snip.title }}
               </button>
             </template>
@@ -387,6 +388,7 @@ function preselectedAssetLabel() {
                 :title="snip.body"
                 @click="a.applySnippet(snip.body)"
               >
+                <span v-if="snip.asset_type" class="assistant-snippet-pill-type">{{ a.snippetAssetTypeLabel(snip.asset_type) }}</span>
                 {{ snip.title }}
               </button>
             </template>
@@ -556,6 +558,15 @@ function preselectedAssetLabel() {
           <span class="field-label">标题</span>
           <input v-model="a.snippetSave.title" class="input" placeholder="在列表中显示的名称" />
         </label>
+        <label class="field">
+          <span class="field-label">适用资产</span>
+          <select v-model="a.snippetSave.assetType" class="input">
+            <option value="">全部（通用）</option>
+            <option value="character">角色</option>
+            <option value="scene">场景</option>
+            <option value="prop">道具</option>
+          </select>
+        </label>
         <label v-if="a.currentDramaId" class="field">
           <span class="field-label">范围</span>
           <select v-model="a.snippetSave.scope" class="input">
@@ -584,6 +595,15 @@ function preselectedAssetLabel() {
         <label class="field">
           <span class="field-label">标题</span>
           <input v-model="a.snippetEdit.title" class="input" />
+        </label>
+        <label class="field">
+          <span class="field-label">适用资产</span>
+          <select v-model="a.snippetEdit.assetType" class="input">
+            <option value="">全部（通用）</option>
+            <option value="character">角色</option>
+            <option value="scene">场景</option>
+            <option value="prop">道具</option>
+          </select>
         </label>
         <label v-if="a.currentDramaId" class="field">
           <span class="field-label">范围</span>
@@ -622,7 +642,10 @@ function preselectedAssetLabel() {
             class="assistant-snippet-manage-item"
           >
             <div class="assistant-snippet-manage-main">
-              <div class="assistant-snippet-manage-name">{{ snip.title }}</div>
+              <div class="assistant-snippet-manage-name">
+                {{ snip.title }}
+                <span class="assistant-snippet-type-badge">{{ a.snippetAssetTypeLabel(snip.asset_type) }}</span>
+              </div>
               <div class="assistant-snippet-manage-preview">{{ excerptBody(snip.body) }}</div>
             </div>
             <div class="assistant-snippet-manage-actions">
@@ -645,7 +668,10 @@ function preselectedAssetLabel() {
             class="assistant-snippet-manage-item"
           >
             <div class="assistant-snippet-manage-main">
-              <div class="assistant-snippet-manage-name">{{ snip.title }}</div>
+              <div class="assistant-snippet-manage-name">
+                {{ snip.title }}
+                <span class="assistant-snippet-type-badge">{{ a.snippetAssetTypeLabel(snip.asset_type) }}</span>
+              </div>
               <div class="assistant-snippet-manage-preview">{{ excerptBody(snip.body) }}</div>
             </div>
             <div class="assistant-snippet-manage-actions">

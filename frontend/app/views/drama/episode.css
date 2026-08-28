@@ -2554,6 +2554,32 @@
   flex-direction: column;
   gap: 8px;
 }
+.asset-edit-snippet-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.asset-edit-snippet-chip {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-2);
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 1.35;
+  color: var(--text-0);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.asset-edit-snippet-chip:hover:not(:disabled) {
+  background: var(--accent-bg);
+  border-color: transparent;
+  color: var(--accent-text);
+}
+.asset-edit-snippet-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .asset-detail-prompt-head-actions {
   display: flex;
   align-items: center;

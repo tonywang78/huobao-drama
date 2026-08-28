@@ -409,6 +409,19 @@
                 <span>改图 · 图生图</span>
                 <span class="dim">{{ editTarget.kindKey === 'character' ? '基于当前角色图按提示词微调，完整重生成请用「重新生成」' : '基于当前场景图按提示词微调，完整重生成请用「重新生成」' }}</span>
               </div>
+              <div v-if="matEditSnippetChips.length" class="mat-edit-snippet-chips">
+                <button
+                  v-for="snip in matEditSnippetChips"
+                  :key="snip.id"
+                  type="button"
+                  class="mat-edit-snippet-chip"
+                  :title="snip.body"
+                  :disabled="!matHasImage(editTarget) || isPending(editTarget)"
+                  @click="applyMatEditSnippet(snip)"
+                >
+                  {{ snip.title }}
+                </button>
+              </div>
               <textarea
                 v-model="editDraft.assetEditPrompt"
                 class="textarea mat-detail-prompt-text"
@@ -534,8 +547,9 @@
 
 <script setup>
 import { toast } from 'vue-sonner'
-import { dramaAPI, episodeAPI, characterAPI, sceneAPI, propAPI, uploadAPI } from '~/composables/useApi'
+import { dramaAPI, episodeAPI, characterAPI, sceneAPI, propAPI, uploadAPI, assistantAPI } from '~/composables/useApi'
 import { useAssetImageHistory } from '~/composables/useAssetImageHistory'
+import { filterSnippetsForAssetType } from '~/composables/useStudioAssistant'
 import AssetImageHistoryList from '~/components/AssetImageHistoryList.vue'
 import BaseSelect from '~/components/BaseSelect.vue'
 
@@ -942,6 +956,27 @@ const editDialog = ref(false)
 const editSaving = ref(false)
 const editTarget = ref(null)
 const editDraft = reactive({})
+const matEditSnippets = ref([])
+const matEditSnippetChips = computed(() => {
+  const type = editTarget.value?.kindKey
+  if (type !== 'character' && type !== 'scene') return []
+  return filterSnippetsForAssetType(matEditSnippets.value, type)
+})
+
+async function loadMatEditSnippets() {
+  const dramaId = drama.value?.id || Number(route.params.id) || null
+  try {
+    const data = await assistantAPI.listSnippets(dramaId || undefined)
+    matEditSnippets.value = data.items || []
+  } catch {
+    matEditSnippets.value = []
+  }
+}
+
+function applyMatEditSnippet(snip) {
+  editDraft.assetEditPrompt = String(snip?.body || '')
+}
+
 const matHistoryType = computed(() => (editDialog.value && editTarget.value ? editTarget.value.kindKey : ''))
 const matHistoryItem = computed(() => editTarget.value)
 const {
@@ -968,6 +1003,7 @@ function openEdit(m) {
   }
   editDraft.finalPrompt = m.finalPrompt || m.final_prompt || ''
   editDialog.value = true
+  if (m.kindKey === 'character' || m.kindKey === 'scene') loadMatEditSnippets()
 }
 
 // 生成/重新生成最终提示词（不生图）：调用各类型 generate-prompt 接口，结果写回 draft
@@ -1643,6 +1679,33 @@ onMounted(load)
   margin-top: 18px;
   border-top: 1px solid var(--border);
   padding-top: 16px;
+}
+.mat-edit-snippet-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.mat-edit-snippet-chip {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-2);
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 1.35;
+  color: var(--text-0);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.mat-edit-snippet-chip:hover:not(:disabled) {
+  background: var(--accent-bg);
+  border-color: transparent;
+  color: var(--accent-text);
+}
+.mat-edit-snippet-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .mat-detail-prompt-gen {
   margin-left: auto;

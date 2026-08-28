@@ -212,9 +212,9 @@ export const assistantAPI = {
     const q = drama_id ? `?drama_id=${drama_id}` : ''
     return api.get<{ items: any[] }>(`/assistant/snippets${q}`)
   },
-  createSnippet: (data: { title: string; body: string; drama_id?: number | null; sort_order?: number }) =>
+  createSnippet: (data: { title: string; body: string; drama_id?: number | null; asset_type?: string | null; sort_order?: number }) =>
     api.post('/assistant/snippets', data),
-  updateSnippet: (id: number, data: { title?: string; body?: string; drama_id?: number | null; sort_order?: number }) =>
+  updateSnippet: (id: number, data: { title?: string; body?: string; drama_id?: number | null; asset_type?: string | null; sort_order?: number }) =>
     api.put(`/assistant/snippets/${id}`, data),
   deleteSnippet: (id: number) => api.del(`/assistant/snippets/${id}`),
 }

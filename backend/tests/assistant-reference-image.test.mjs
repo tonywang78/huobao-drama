@@ -22,9 +22,12 @@ test('generate_image tool routes to img2img when references are present', () => 
 test('assistant chat injects user refs into request context and ref fallback', () => {
   const route = read('src/routes/assistant.ts')
   const svc = read('src/services/assistant.ts')
+  const intent = read('src/services/assistant-image-intent.ts')
   assert.match(route, /assistantRefs: refs/)
   assert.match(route, /assistantAttachments: attachments/)
   assert.match(route, /needsRefFallback/)
-  assert.match(svc, /hasExplicitImageRef/)
+  assert.match(route, /shouldSkipDirectImageEditFallback/)
+  assert.match(svc, /shouldDirectImageEdit/)
   assert.match(svc, /export function toolCallUsedReferenceImages/)
+  assert.match(intent, /looksLikeFieldEditIntent/)
 })

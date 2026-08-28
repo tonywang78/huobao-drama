@@ -312,10 +312,13 @@ export const mysqlSchemaStatements = [
     drama_id INT,
     title VARCHAR(128) NOT NULL,
     body TEXT NOT NULL,
+    asset_type VARCHAR(16) NULL,
+    system_key VARCHAR(64) NULL,
     sort_order INT DEFAULT 0,
     created_at VARCHAR(64) NOT NULL,
     updated_at VARCHAR(64) NOT NULL,
-    INDEX idx_assistant_snippets_drama (drama_id)
+    INDEX idx_assistant_snippets_drama (drama_id),
+    UNIQUE KEY uk_assistant_snippets_system_key (system_key)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 ]
 
@@ -337,12 +340,45 @@ export const stylePresetSeeds = [
   { name: '油画质感', value: 'oil-painting', sortOrder: 12, prompt: 'classical oil painting style, visible brushstrokes, rich impasto texture, layered pigment depth, dramatic Rembrandt lighting, gallery fine-art look, painterly canvas grain', description: '古典油画笔触与厚涂' },
 ]
 
+/**
+ * 资产图生图常用提示词种子 — system_key 幂等；不覆盖用户已改 title/body
+ */
+export const assistantSnippetSeeds = [
+  {
+    systemKey: 'character.standardize',
+    assetType: 'character',
+    title: '标准化',
+    sortOrder: 1,
+    body: '角色设定参考图，左侧为正脸特写，右侧并列展示正面、90 度侧面、背面三张等高全身视图，特写与全身视图都是同一角色，全身入镜，中性 A 字站姿，三张全身视图等高并排、头顶脚底对齐',
+  },
+  {
+    systemKey: 'scene.fixed_view',
+    assetType: 'scene',
+    title: '固定视角',
+    sortOrder: 1,
+    body: '场景设定参考图，固定机位与构图，保持空间布局、道具摆放与光照方向一致，环境细节清晰可读，无人物抢戏',
+  },
+  {
+    systemKey: 'prop.white_bg',
+    assetType: 'prop',
+    title: '白底单品',
+    sortOrder: 1,
+    body: '道具设定参考图，纯白背景，单件居中，完整入镜，材质与细节清晰，无多余道具与人物',
+  },
+]
+
 // INSERT ... SELECT WHERE NOT EXISTS → 幂等：只补缺失行，不覆盖用户编辑，
 // 且不会像 INSERT IGNORE 那样在每次启动时白白消耗自增 id
-export const mysqlDataSeedStatements = stylePresetSeeds.map((s) => ({
-  sql: 'INSERT INTO `style_presets` (`name`, `value`, `prompt`, `description`, `sort_order`, `is_active`, `created_at`, `updated_at`) SELECT ?, ?, ?, ?, ?, 1, ?, ? FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM `style_presets` WHERE `value` = ?)',
-  params: [s.name, s.value, s.prompt, s.description, s.sortOrder, new Date().toISOString(), new Date().toISOString(), s.value],
-}))
+export const mysqlDataSeedStatements = [
+  ...stylePresetSeeds.map((s) => ({
+    sql: 'INSERT INTO `style_presets` (`name`, `value`, `prompt`, `description`, `sort_order`, `is_active`, `created_at`, `updated_at`) SELECT ?, ?, ?, ?, ?, 1, ?, ? FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM `style_presets` WHERE `value` = ?)',
+    params: [s.name, s.value, s.prompt, s.description, s.sortOrder, new Date().toISOString(), new Date().toISOString(), s.value],
+  })),
+  ...assistantSnippetSeeds.map((s) => ({
+    sql: 'INSERT INTO `assistant_snippets` (`drama_id`, `title`, `body`, `asset_type`, `system_key`, `sort_order`, `created_at`, `updated_at`) SELECT NULL, ?, ?, ?, ?, ?, ?, ? FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM `assistant_snippets` WHERE `system_key` = ?)',
+    params: [s.title, s.body, s.assetType, s.systemKey, s.sortOrder, new Date().toISOString(), new Date().toISOString(), s.systemKey],
+  })),
+]
 
 /** 已有库增量补丁：CREATE TABLE IF NOT EXISTS 不会给旧表加列 */
 export const mysqlSchemaPatches = [
@@ -351,6 +387,9 @@ export const mysqlSchemaPatches = [
   'ALTER TABLE `storyboards` ADD COLUMN `first_last_prompt` TEXT NULL AFTER `video_prompt`',
   'ALTER TABLE `storyboards` ADD COLUMN `first_frame_prompt` TEXT NULL AFTER `first_last_prompt`',
   'ALTER TABLE `storyboards` ADD COLUMN `last_frame_prompt` TEXT NULL AFTER `first_frame_prompt`',
+  'ALTER TABLE `assistant_snippets` ADD COLUMN `asset_type` VARCHAR(16) NULL AFTER `body`',
+  'ALTER TABLE `assistant_snippets` ADD COLUMN `system_key` VARCHAR(64) NULL AFTER `asset_type`',
+  'ALTER TABLE `assistant_snippets` ADD UNIQUE KEY `uk_assistant_snippets_system_key` (`system_key`)',
 ]
 
 async function applySchemaPatches(pool: Pool) {
@@ -359,7 +398,8 @@ async function applySchemaPatches(pool: Pool) {
       await pool.query(sql)
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code
-      if (code === 'ER_DUP_FIELDNAME') continue
+      // 列已存在 / 索引已存在 → 幂等跳过
+      if (code === 'ER_DUP_FIELDNAME' || code === 'ER_DUP_KEYNAME') continue
       throw err
     }
   }

@@ -28,6 +28,7 @@ import {
   parseMessageContent,
   runPipelineAction,
   serializeThread,
+  shouldSkipDirectImageEditFallback,
   toModelMessages,
   updateMessageContent,
   updateSnippet,
@@ -109,6 +110,7 @@ app.post('/snippets', async (c) => {
       title: String(body.title || ''),
       body: String(body.body || ''),
       dramaId,
+      assetType: body.asset_type ?? body.assetType ?? null,
       sortOrder: Number(body.sort_order ?? body.sortOrder ?? 0),
     })
     return success(c, row)
@@ -127,11 +129,15 @@ app.put('/snippets/:id', async (c) => {
     const raw = body.drama_id ?? body.dramaId
     dramaId = raw === null ? null : num(raw)
   }
+  const assetType = ('asset_type' in body || 'assetType' in body)
+    ? (body.asset_type ?? body.assetType ?? null)
+    : undefined
   try {
     const row = await updateSnippet(id, {
       title: body.title != null ? String(body.title) : undefined,
       body: body.body != null ? String(body.body) : undefined,
       dramaId,
+      assetType,
       sortOrder: body.sort_order != null || body.sortOrder != null
         ? Number(body.sort_order ?? body.sortOrder)
         : undefined,
@@ -297,7 +303,12 @@ app.post('/chat', async (c) => {
       const userHasImageRefs = userRefUrls.length > 0 || attachments.length > 0
       const toolUsedRefs = toolCallUsedReferenceImages(outcomes.toolCalls)
       const needsRefFallback = userHasImageRefs && !toolUsedRefs
-      if (!outcomes.imageTasks.length || needsRefFallback) {
+      const skipDirectEdit = shouldSkipDirectImageEditFallback({
+        imageTasksLength: outcomes.imageTasks.length,
+        needsRefFallback,
+        didWrite: !!outcomes.didWrite,
+      })
+      if (!skipDirectEdit && (!outcomes.imageTasks.length || needsRefFallback)) {
         const direct = await tryDirectImageEdit({
           text,
           refs,
@@ -306,6 +317,7 @@ app.post('/chat', async (c) => {
           dramaId,
           imageModel: body.image_model || undefined,
           img2imgConfigId: body.img2img_config_id || undefined,
+          forceForRefFallback: needsRefFallback && outcomes.imageTasks.length > 0,
         })
         if (direct) {
           outcomes = {
