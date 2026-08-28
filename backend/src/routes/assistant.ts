@@ -11,6 +11,7 @@ import { buildAgentRequestContext, type AssistantUiContext } from '../agents/con
 import {
   appendMessage,
   buildContextSnapshot,
+  clearThreadMessages,
   collectToolOutcomes,
   enrichRefs,
   tryDirectImageEdit,
@@ -74,6 +75,16 @@ app.get('/thread', async (c) => {
     mentions,
     snippets,
   })
+})
+
+// DELETE /assistant/thread?drama_id=&episode_id=
+app.delete('/thread', async (c) => {
+  const dramaId = num(c.req.query('drama_id'))
+  const episodeId = num(c.req.query('episode_id'))
+  const thread = await getOrCreateThread({ dramaId, episodeId })
+  if (!thread) return badRequest(c, '无法定位对话线程')
+  await clearThreadMessages(thread.id)
+  return success(c, { ok: true, thread: serializeThread(thread) })
 })
 
 // GET /assistant/snippets?drama_id=

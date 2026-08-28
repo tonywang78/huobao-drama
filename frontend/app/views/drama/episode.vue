@@ -30,8 +30,8 @@
         />
         <ConfirmDialog
           :open="wb.assetDelete.open"
-          :title="`从本集移除${wb.assetDeleteTypeLabel}`"
-          :message="`确定将${wb.assetDeleteTypeLabel}「${wb.assetDeleteName}」从本集移除吗？其他集与项目素材库仍保留。`"
+          :title="wb.assetDeleteTitle"
+          :message="wb.assetDeleteMessage"
           confirm-text="移除"
           loading-text="移除中..."
           :loading="wb.assetDelete.loading"

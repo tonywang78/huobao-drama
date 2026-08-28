@@ -142,6 +142,11 @@ export async function listThreadMessages(threadId: number, limit = 200) {
   }))
 }
 
+export async function clearThreadMessages(threadId: number) {
+  await db.delete(schema.assistantMessages).where(eq(schema.assistantMessages.threadId, threadId))
+  await db.update(schema.assistantThreads).set({ updatedAt: now() }).where(eq(schema.assistantThreads.id, threadId))
+}
+
 export async function appendMessage(threadId: number, role: string, content: AssistantMessageContent) {
   const ts = now()
   const res = await db.insert(schema.assistantMessages).values({

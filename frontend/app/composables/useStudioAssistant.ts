@@ -313,6 +313,34 @@ export function useStudioAssistant() {
     }
   }
 
+  const clearing = useState('assistant-clearing', () => false)
+
+  async function clearHistory() {
+    if (clearing.value || sending.value) return
+    const ctx = collectUiContext()
+    if (ctx.route === 'episode' && !ctx.episode_id) {
+      toast.warning('请先进入某一集后再清空对话')
+      return
+    }
+    clearing.value = true
+    try {
+      const data = await assistantAPI.clearThread({
+        drama_id: ctx.drama_id || undefined,
+        episode_id: ctx.episode_id || undefined,
+      })
+      thread.value = data.thread
+      messages.value = []
+      draft.value = ''
+      attachments.value = []
+      pollingTaskIds.clear()
+      toast.success('对话历史已清空')
+    } catch (err) {
+      toast.error(err.message || '清空失败')
+    } finally {
+      clearing.value = false
+    }
+  }
+
   function applySnippet(body) {
     const text = String(body || '').trim()
     if (!text) return
@@ -994,13 +1022,13 @@ export function useStudioAssistant() {
   })
 
   return reactive({
-    open, toggle, sending, confirming, thread, messages, assets, mentions, snippets, draft, attachments,
+    open, toggle, sending, confirming, clearing, thread, messages, assets, mentions, snippets, draft, attachments,
     textModelOptions, textModelMultiCfg, chatModel, setChatModel, mentionOptions,
     imagePreview, assetDialog, listAssetCandidates, selectedAssetCandidate,
     snippetSave, snippetEdit, currentDramaId, projectSnippets, sharedSnippets,
     send, confirmProposal, dismissProposal, addAttachment, removeAttachment,
     openImagePreview, closeImagePreview, continueEditArtifact, openAssetDialog, pickAssetMode, pickAssetType,
-    pickAssetTarget, assetDialogBack, closeAssetDialog, submitAssetDialog, resolveMessageRefs, loadThread, loadSnippets, mediaUrl,
+    pickAssetTarget, assetDialogBack, closeAssetDialog, submitAssetDialog, resolveMessageRefs, loadThread, loadSnippets, clearHistory, mediaUrl,
     applySnippet, openSaveSnippet, submitSaveSnippet, openEditSnippet, submitEditSnippet, removeSnippet,
     copyMessageText,
   })

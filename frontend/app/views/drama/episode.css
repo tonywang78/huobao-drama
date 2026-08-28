@@ -1191,6 +1191,21 @@
 }
 .asset-add-btn:hover { color: var(--accent-text); border-color: var(--accent-text); }
 .character-asset-card, .asset-click-card { position: relative; }
+.character-asset-card.is-selected,
+.asset-click-card.is-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.asset-check {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 3;
+  width: 18px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.92);
+}
+.asset-check.on { color: #fff; }
 .asset-del-btn {
   position: absolute;
   top: 8px;

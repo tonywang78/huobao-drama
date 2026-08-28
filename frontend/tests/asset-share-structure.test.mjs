@@ -11,11 +11,32 @@ test('useApi exposes episode linkAssets and unlink helpers', () => {
 
   assert.match(useApi, /availableAssets:/)
   assert.match(useApi, /linkAssets:/)
+  assert.match(useApi, /unlinkAssets:/)
   assert.match(useApi, /unlinkCharacter:/)
   assert.match(useApi, /unlinkScene:/)
   assert.match(useApi, /unlinkProp:/)
   assert.match(useApi, /\/link-assets/)
+  assert.match(useApi, /\/unlink-assets/)
   assert.match(useApi, /\/available-assets\?type=/)
+})
+
+test('episode assets panel supports batch unlink with select-all', () => {
+  const page = readEpisodeWorkbenchSources()
+
+  assert.match(page, /批量删除/)
+  assert.match(page, /assetSelectMode/)
+  assert.match(page, /enterAssetSelectMode/)
+  assert.match(page, /exitAssetSelectMode/)
+  assert.match(page, /toggleAssetSelect/)
+  assert.match(page, /toggleSelectAllAssets/)
+  assert.match(page, /askBatchDeleteAssets/)
+  assert.match(page, /episodeAPI\.unlinkAssets/)
+  assert.match(page, /移除已选/)
+  assert.match(page, /全选/)
+  assert.match(page, /其他集与项目素材库仍保留/)
+  assert.doesNotMatch(page, /characterAPI\.del\(/)
+  assert.doesNotMatch(page, /sceneAPI\.del\(/)
+  assert.doesNotMatch(page, /propAPI\.del\(/)
 })
 
 test('episode workbench can pick from library and unlink instead of soft-delete', () => {

@@ -57,6 +57,8 @@ export const episodeAPI = {
   availableAssets: (id: number, type: 'character' | 'scene' | 'prop') => api.get(`/episodes/${id}/available-assets?type=${type}`),
   linkAssets: (id: number, data: { character_ids?: number[]; scene_ids?: number[]; prop_ids?: number[] }) =>
     api.post(`/episodes/${id}/link-assets`, data),
+  unlinkAssets: (id: number, data: { character_ids?: number[]; scene_ids?: number[]; prop_ids?: number[] }) =>
+    api.post(`/episodes/${id}/unlink-assets`, data),
   unlinkCharacter: (episodeId: number, characterId: number) => api.del(`/episodes/${episodeId}/characters/${characterId}`),
   unlinkScene: (episodeId: number, sceneId: number) => api.del(`/episodes/${episodeId}/scenes/${sceneId}`),
   unlinkProp: (episodeId: number, propId: number) => api.del(`/episodes/${episodeId}/props/${propId}`),
@@ -192,6 +194,12 @@ export const assistantAPI = {
     if (params.drama_id) q.set('drama_id', String(params.drama_id))
     if (params.episode_id) q.set('episode_id', String(params.episode_id))
     return api.get<{ thread: any; messages: any[]; assets: any[]; snippets: any[] }>(`/assistant/thread${q.size ? `?${q}` : ''}`)
+  },
+  clearThread: (params: { drama_id?: number | null; episode_id?: number | null } = {}) => {
+    const q = new URLSearchParams()
+    if (params.drama_id) q.set('drama_id', String(params.drama_id))
+    if (params.episode_id) q.set('episode_id', String(params.episode_id))
+    return api.del<{ ok: boolean; thread: any }>(`/assistant/thread${q.size ? `?${q}` : ''}`)
   },
   updateMessage: (id: number, data: { artifacts?: any[] }) => api.put(`/assistant/messages/${id}`, data),
   confirm: (data: { thread_id: number; message_id: number; model?: string; config_id?: number }) =>

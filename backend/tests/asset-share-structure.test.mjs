@@ -43,6 +43,21 @@ test('episodes route supports link-assets, available-assets, and unlink', () => 
   assert.match(route, /await unlinkPropFromEpisode\(episodeId, assetId\)\s*\n\s*return success/)
 })
 
+test('episodes route supports unlink-assets batch endpoint without hard delete', () => {
+  const route = read('src/routes/episodes.ts')
+
+  assert.match(route, /app\.post\('\/:id\/unlink-assets'/)
+  assert.match(route, /至少提供一组 character_ids \/ scene_ids \/ prop_ids/)
+  assert.match(route, /unlinked_characters/)
+  assert.match(route, /unlinked_scenes/)
+  assert.match(route, /unlinked_props/)
+  assert.match(route, /unlinkCharFromEpisode\(episodeId, characterId\)/)
+  assert.match(route, /unlinkSceneFromEpisode\(episodeId, sceneId\)/)
+  assert.match(route, /unlinkPropFromEpisode\(episodeId, propId\)/)
+  assert.doesNotMatch(route, /hardDeleteCharacter|hardDeleteScene|hardDeleteProp/)
+  assert.doesNotMatch(route, /characterAPI|\.deletedAt\s*=/)
+})
+
 test('extract and storyboard tools reuse shared episode-assets link helpers', () => {
   const extract = read('src/agents/tools/extract-tools.ts')
   const storyboard = read('src/agents/tools/storyboard-tools.ts')

@@ -221,6 +221,41 @@ app.post('/:id/link-assets', async (c) => {
   })
 })
 
+// POST /episodes/:id/unlink-assets — 批量从本集断链，不删实体
+app.post('/:id/unlink-assets', async (c) => {
+  const episodeId = Number(c.req.param('id'))
+  const body: any = await c.req.json().catch(() => ({}))
+  const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, episodeId))
+  if (!ep || ep.deletedAt) return notFound(c, '剧集不存在')
+
+  const toIds = (raw: unknown): number[] =>
+    Array.isArray(raw)
+      ? [...new Set(raw.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))]
+      : []
+  const characterIds = toIds(body.character_ids)
+  const sceneIds = toIds(body.scene_ids)
+  const propIds = toIds(body.prop_ids)
+  if (!characterIds.length && !sceneIds.length && !propIds.length) {
+    return badRequest(c, '至少提供一组 character_ids / scene_ids / prop_ids')
+  }
+
+  for (const characterId of characterIds) {
+    await unlinkCharFromEpisode(episodeId, characterId)
+  }
+  for (const sceneId of sceneIds) {
+    await unlinkSceneFromEpisode(episodeId, sceneId)
+  }
+  for (const propId of propIds) {
+    await unlinkPropFromEpisode(episodeId, propId)
+  }
+
+  return success(c, {
+    unlinked_characters: characterIds.length,
+    unlinked_scenes: sceneIds.length,
+    unlinked_props: propIds.length,
+  })
+})
+
 // DELETE /episodes/:id/characters/:assetId — 仅断链，不软删实体
 app.delete('/:id/characters/:assetId', async (c) => {
   const episodeId = Number(c.req.param('id'))

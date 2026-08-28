@@ -293,15 +293,93 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
   }
 
   // ─── 从本集移除资产（断链，不软删实体） ──────────────────────
-  const assetDelete = ref({ open: false, type: '', item: null, loading: false })
+  const assetDelete = ref({ open: false, mode: 'single', type: '', item: null, count: 0, loading: false })
   const assetDeleteTypeLabel = computed(() => ASSET_TYPE_SHORT[assetDelete.value.type] || '资产')
   const assetDeleteName = computed(() => assetDelete.value.item?.name || assetDelete.value.item?.location || '')
+  const assetDeleteTitle = computed(() =>
+    assetDelete.value.mode === 'batch' ? '从本集移除资产' : `从本集移除${assetDeleteTypeLabel.value}`,
+  )
+  const assetDeleteMessage = computed(() =>
+    assetDelete.value.mode === 'batch'
+      ? `确定将 ${assetDelete.value.count} 个资产从本集移除吗？其他集与项目素材库仍保留。`
+      : `确定将${assetDeleteTypeLabel.value}「${assetDeleteName.value}」从本集移除吗？其他集与项目素材库仍保留。`,
+  )
+
+  const assetSelectMode = ref(false)
+  const selectedAssetKeys = ref([])
+  function assetSelectKey(type, id) { return `${type}:${id}` }
+  function isAssetSelected(type, id) { return selectedAssetKeys.value.includes(assetSelectKey(type, id)) }
+  function allAssetSelectKeys() {
+    return [
+      ...visualChars.value.map(c => assetSelectKey('character', c.id)),
+      ...scenes.value.map(s => assetSelectKey('scene', s.id)),
+      ...propItems.value.map(p => assetSelectKey('prop', p.id)),
+    ]
+  }
+  const selectedAssetCount = computed(() => selectedAssetKeys.value.length)
+  const allAssetsSelected = computed(() => {
+    const all = allAssetSelectKeys()
+    return all.length > 0 && selectedAssetKeys.value.length === all.length
+  })
+
+  function enterAssetSelectMode() {
+    if (!assetTotalCount.value) return
+    assetSelectMode.value = true
+    selectedAssetKeys.value = []
+  }
+  function exitAssetSelectMode() {
+    assetSelectMode.value = false
+    selectedAssetKeys.value = []
+  }
+  function toggleAssetSelect(type, id) {
+    const key = assetSelectKey(type, id)
+    selectedAssetKeys.value = isAssetSelected(type, id)
+      ? selectedAssetKeys.value.filter(k => k !== key)
+      : [...selectedAssetKeys.value, key]
+  }
+  function toggleSelectAllAssets() {
+    selectedAssetKeys.value = allAssetsSelected.value ? [] : allAssetSelectKeys()
+  }
+  function onAssetCardClick(type, item) {
+    if (assetSelectMode.value) toggleAssetSelect(type, item.id)
+    else openAssetDetail(type, item)
+  }
+  function selectedAssetsPayload() {
+    const character_ids = []
+    const scene_ids = []
+    const prop_ids = []
+    for (const key of selectedAssetKeys.value) {
+      const [kind, idStr] = key.split(':')
+      const id = Number(idStr)
+      if (!Number.isInteger(id) || id <= 0) continue
+      if (kind === 'character') character_ids.push(id)
+      else if (kind === 'scene') scene_ids.push(id)
+      else if (kind === 'prop') prop_ids.push(id)
+    }
+    return { character_ids, scene_ids, prop_ids }
+  }
 
   function askDeleteAsset(type, item) {
-    assetDelete.value = { open: true, type, item, loading: false }
+    assetDelete.value = { open: true, mode: 'single', type, item, count: 0, loading: false }
+  }
+
+  function askBatchDeleteAssets() {
+    if (!selectedAssetCount.value || assetDelete.value.loading) return
+    assetDelete.value = {
+      open: true,
+      mode: 'batch',
+      type: '',
+      item: null,
+      count: selectedAssetCount.value,
+      loading: false,
+    }
   }
 
   async function confirmDeleteAsset() {
+    if (assetDelete.value.mode === 'batch') {
+      await confirmBatchDeleteAssets()
+      return
+    }
     const { type, item } = assetDelete.value
     if (!item || assetDelete.value.loading || !epId.value) return
     assetDelete.value.loading = true
@@ -312,6 +390,26 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
       toast.success(`已从本集移除${assetDeleteTypeLabel.value}`)
       assetDelete.value.open = false
       if (assetDetail.value.open && assetDetail.value.type === type && assetDetail.value.item?.id === item.id) closeAssetDetail()
+      await refresh()
+    } catch (e) {
+      toast.error(e.message)
+    } finally {
+      assetDelete.value.loading = false
+    }
+  }
+
+  async function confirmBatchDeleteAssets() {
+    if (assetDelete.value.loading || !epId.value) return
+    const payload = selectedAssetsPayload()
+    if (!payload.character_ids.length && !payload.scene_ids.length && !payload.prop_ids.length) return
+    const count = assetDelete.value.count
+    assetDelete.value.loading = true
+    try {
+      await episodeAPI.unlinkAssets(epId.value, payload)
+      toast.success(`已从本集移除 ${count} 个资产`)
+      assetDelete.value.open = false
+      exitAssetSelectMode()
+      if (assetDetail.value.open) closeAssetDetail()
       await refresh()
     } catch (e) {
       toast.error(e.message)
@@ -2498,7 +2596,9 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     isCurrentAssetImage, previewAssetHistoryImage, setAssetAsMainImage, removeAssetHistoryImage,
     assetCreate, assetCreateDraft, assetCreateTypeLabel, openAssetCreate, saveAssetCreate,
     assetPick, assetPickTypeLabel, openAssetPick, toggleAssetPick, confirmAssetPick, assetPickSubtitle,
-    assetDelete, assetDeleteTypeLabel, assetDeleteName, confirmDeleteAsset,
+    assetDelete, assetDeleteTypeLabel, assetDeleteName, assetDeleteTitle, assetDeleteMessage, confirmDeleteAsset,
+    assetSelectMode, selectedAssetCount, allAssetsSelected, isAssetSelected, enterAssetSelectMode, exitAssetSelectMode,
+    toggleAssetSelect, toggleSelectAllAssets, onAssetCardClick, askBatchDeleteAssets,
     sbDelete, confirmDeleteStoryboard, askDeleteStoryboard, askDeleteAsset,
     imageViewer, closeImageViewer, activeMerge, handleImageViewerKeydown,
     visualChars, lockedImageConfigLabel, lockedVideoConfigLabel, lockedFirstLastConfigLabel, hasFirstLastService,

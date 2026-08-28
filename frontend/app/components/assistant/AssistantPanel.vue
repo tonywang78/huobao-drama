@@ -2,6 +2,7 @@
 import { ArrowLeft, Bot, BookmarkPlus, Copy, ImagePlus, Loader2, Paperclip, Pencil, Send, Sparkles, Trash2, Wand2, X, ZoomIn } from 'lucide-vue-next'
 import ModelSelect from '~/components/ModelSelect.vue'
 import MentionTextarea from '~/components/MentionTextarea.vue'
+import ConfirmDialog from '~/components/ConfirmDialog.vue'
 import { thumbOf, thumbFallback } from '~/composables/useMedia'
 import { renderMarkdown } from '~/utils/markdown'
 
@@ -15,7 +16,13 @@ const panelEl = ref(null)
 const bodyEl = ref(null)
 const composerEl = ref(null)
 const snippetManageOpen = ref(false)
+const clearConfirmOpen = ref(false)
 const stickToBottom = ref(true)
+
+async function confirmClearHistory() {
+  await a.clearHistory()
+  clearConfirmOpen.value = false
+}
 
 function scrollToLatest() {
   const el = bodyEl.value
@@ -179,6 +186,17 @@ function preselectedAssetLabel() {
           :show-config="a.textModelMultiCfg"
           @update:model-value="a.setChatModel"
         />
+        <button
+          v-if="a.messages.length"
+          class="btn btn-ghost btn-icon"
+          type="button"
+          title="清空历史对话"
+          aria-label="清空历史对话"
+          :disabled="a.sending || a.clearing"
+          @click="clearConfirmOpen = true"
+        >
+          <Trash2 :size="14" />
+        </button>
         <button class="btn btn-ghost btn-icon" type="button" aria-label="关闭助手" @click="a.open = false">
           <X :size="14" />
         </button>
@@ -619,4 +637,15 @@ function preselectedAssetLabel() {
     </div>
   </div>
   </Teleport>
+
+  <ConfirmDialog
+    :open="clearConfirmOpen"
+    title="清空历史对话"
+    message="将删除当前上下文下的全部对话记录，常用提示词不会受影响。此操作不可撤销。"
+    confirm-text="清空"
+    loading-text="清空中..."
+    :loading="a.clearing"
+    @confirm="confirmClearHistory"
+    @cancel="clearConfirmOpen = false"
+  />
 </template>

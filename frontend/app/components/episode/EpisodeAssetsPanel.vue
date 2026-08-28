@@ -1,5 +1,5 @@
 <script setup>
-import { Loader2, Plus, X, ListTodo, Upload, Play, MapPin } from 'lucide-vue-next'
+import { Loader2, Plus, X, ListTodo, Upload, Play, MapPin, Trash2 } from 'lucide-vue-next'
 
 const wb = useEpisodeWorkbenchInject()
 </script>
@@ -11,6 +11,19 @@ const wb = useEpisodeWorkbenchInject()
               <span class="tag mono">{{ wb.assetReadyCount }}/{{ wb.assetTotalCount }} 已就绪</span>
               <span class="tag">{{ wb.lockedImageConfigLabel }}</span>
               <div class="ml-auto flex gap-1 asset-bar-actions">
+                <template v-if="wb.assetSelectMode">
+                  <button class="btn btn-sm" @click="wb.exitAssetSelectMode">取消</button>
+                  <button class="btn btn-sm" @click="wb.toggleSelectAllAssets">{{ wb.allAssetsSelected ? '取消全选' : '全选' }}</button>
+                  <button
+                    class="btn btn-sm btn-danger"
+                    :disabled="!wb.selectedAssetCount || wb.assetDelete.loading"
+                    @click="wb.askBatchDeleteAssets"
+                  >
+                    <Trash2 :size="11" />
+                    移除已选（{{ wb.selectedAssetCount }}）
+                  </button>
+                </template>
+                <template v-else>
                 <button
                   v-for="t in wb.EXTRACT_TARGETS"
                   :key="t.key"
@@ -36,6 +49,11 @@ const wb = useEpisodeWorkbenchInject()
                   批量道具
                 </button>
                 <button class="btn btn-sm" @click="wb.openAssetImport"><Upload :size="11" /> 导入文件</button>
+                <button v-if="wb.assetTotalCount" class="btn btn-sm btn-danger" @click="wb.enterAssetSelectMode">
+                  <Trash2 :size="11" />
+                  批量删除
+                </button>
+                </template>
               </div>
             </div>
             <div v-if="wb.extractingTargets.length && !wb.chars.length && !wb.scenes.length && !wb.propItems.length" class="step-loading">
@@ -73,13 +91,21 @@ const wb = useEpisodeWorkbenchInject()
                 v-for="c in wb.visualChars"
                 :key="c.id"
                 class="card character-asset-card"
+                :class="{ 'is-selected': wb.assetSelectMode && wb.isAssetSelected('character', c.id) }"
                 tabindex="0"
                 role="button"
-                @click="wb.openAssetDetail('character', c)"
-                @keydown.enter.prevent="wb.openAssetDetail('character', c)"
-                @keydown.space.prevent="wb.openAssetDetail('character', c)"
+                @click="wb.onAssetCardClick('character', c)"
+                @keydown.enter.prevent="wb.onAssetCardClick('character', c)"
+                @keydown.space.prevent="wb.onAssetCardClick('character', c)"
               >
-                <button class="asset-del-btn" title="从本集移除角色" @click.stop="wb.askDeleteAsset('character', c)"><X :size="11" /></button>
+                <span
+                  v-if="wb.assetSelectMode"
+                  class="shot-check asset-check"
+                  :class="{ on: wb.isAssetSelected('character', c.id) }"
+                >
+                  <svg v-if="wb.isAssetSelected('character', c.id)" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+                <button v-else class="asset-del-btn" title="从本集移除角色" @click.stop="wb.askDeleteAsset('character', c)"><X :size="11" /></button>
                 <div class="character-asset-main">
                   <div class="character-asset-overview"><div class="character-portrait">
                       <img
@@ -88,7 +114,7 @@ const wb = useEpisodeWorkbenchInject()
                         class="previewable-image"
                         loading="lazy"
                         @error="wb.thumbFallback($event, wb.assetImageSrc(c))"
-                        @click.stop="wb.openImageViewer(wb.assetImageSrc(c), `${c.name} 角色形象`)"
+                        @click.stop="wb.assetSelectMode ? wb.toggleAssetSelect('character', c.id) : wb.openImageViewer(wb.assetImageSrc(c), `${c.name} 角色形象`)"
                       />
                       <div v-else class="character-portrait-empty">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -140,13 +166,21 @@ const wb = useEpisodeWorkbenchInject()
                 v-for="s in wb.scenes"
                 :key="s.id"
                 class="card asset-card asset-click-card"
+                :class="{ 'is-selected': wb.assetSelectMode && wb.isAssetSelected('scene', s.id) }"
                 tabindex="0"
                 role="button"
-                @click="wb.openAssetDetail('scene', s)"
-                @keydown.enter.prevent="wb.openAssetDetail('scene', s)"
-                @keydown.space.prevent="wb.openAssetDetail('scene', s)"
+                @click="wb.onAssetCardClick('scene', s)"
+                @keydown.enter.prevent="wb.onAssetCardClick('scene', s)"
+                @keydown.space.prevent="wb.onAssetCardClick('scene', s)"
               >
-                <button class="asset-del-btn" title="从本集移除场景" @click.stop="wb.askDeleteAsset('scene', s)"><X :size="11" /></button>
+                <span
+                  v-if="wb.assetSelectMode"
+                  class="shot-check asset-check"
+                  :class="{ on: wb.isAssetSelected('scene', s.id) }"
+                >
+                  <svg v-if="wb.isAssetSelected('scene', s.id)" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+                <button v-else class="asset-del-btn" title="从本集移除场景" @click.stop="wb.askDeleteAsset('scene', s)"><X :size="11" /></button>
                 <div class="asset-cover wide">
                   <img
                     v-if="s.image_url || s.imageUrl"
@@ -154,7 +188,7 @@ const wb = useEpisodeWorkbenchInject()
                     class="previewable-image"
                     loading="lazy"
                     @error="wb.thumbFallback($event, wb.assetImageSrc(s))"
-                    @click.stop="wb.openImageViewer(wb.assetImageSrc(s), `${s.location} 场景图`)"
+                    @click.stop="wb.assetSelectMode ? wb.toggleAssetSelect('scene', s.id) : wb.openImageViewer(wb.assetImageSrc(s), `${s.location} 场景图`)"
                   />
                   <div v-else class="asset-cover-empty">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
@@ -196,13 +230,21 @@ const wb = useEpisodeWorkbenchInject()
                 v-for="p in wb.propItems"
                 :key="p.id"
                 class="card asset-card asset-click-card prop-card"
+                :class="{ 'is-selected': wb.assetSelectMode && wb.isAssetSelected('prop', p.id) }"
                 tabindex="0"
                 role="button"
-                @click="wb.openAssetDetail('prop', p)"
-                @keydown.enter.prevent="wb.openAssetDetail('prop', p)"
-                @keydown.space.prevent="wb.openAssetDetail('prop', p)"
+                @click="wb.onAssetCardClick('prop', p)"
+                @keydown.enter.prevent="wb.onAssetCardClick('prop', p)"
+                @keydown.space.prevent="wb.onAssetCardClick('prop', p)"
               >
-                <button class="asset-del-btn" title="从本集移除道具" @click.stop="wb.askDeleteAsset('prop', p)"><X :size="11" /></button>
+                <span
+                  v-if="wb.assetSelectMode"
+                  class="shot-check asset-check"
+                  :class="{ on: wb.isAssetSelected('prop', p.id) }"
+                >
+                  <svg v-if="wb.isAssetSelected('prop', p.id)" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+                <button v-else class="asset-del-btn" title="从本集移除道具" @click.stop="wb.askDeleteAsset('prop', p)"><X :size="11" /></button>
                 <div class="asset-cover wide">
                   <img
                     v-if="p.image_url || p.imageUrl"
@@ -210,7 +252,7 @@ const wb = useEpisodeWorkbenchInject()
                     class="previewable-image"
                     loading="lazy"
                     @error="wb.thumbFallback($event, wb.assetImageSrc(p))"
-                    @click.stop="wb.openImageViewer(wb.assetImageSrc(p), `${p.name} 道具图`)"
+                    @click.stop="wb.assetSelectMode ? wb.toggleAssetSelect('prop', p.id) : wb.openImageViewer(wb.assetImageSrc(p), `${p.name} 道具图`)"
                   />
                   <div v-else class="asset-cover-empty">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
