@@ -8,12 +8,16 @@ const props = defineProps({
   variant: { type: String, default: 'compact' },
   /** 触发器上的短标签，如「拆分」「提示词」 */
   label: { type: String, default: '' },
+  /** 独立存储域，与顶部 toolbar 选择互不影响 */
+  scope: { type: String, default: '' },
 })
 
 const open = ref(false)
 const rootEl = ref(null)
 const panelStyle = ref({})
-const skill = reactive(useAgentSkillSelection(() => props.agentType))
+const skill = reactive(useAgentSkillSelection(() => props.agentType, {
+  scope: props.scope || undefined,
+}))
 
 onMounted(() => skill.load())
 watch(() => props.agentType, () => skill.load())
@@ -47,9 +51,9 @@ function placePanel() {
 }
 
 defineExpose({
-  getPayload: () => skill.payload,
-  summary: () => skill.summary,
-  customized: () => skill.customized,
+  getPayload: () => skill.payload?.value ?? skill.payload,
+  summary: () => skill.summary?.value ?? skill.summary,
+  customized: () => skill.customized?.value ?? skill.customized,
   reload: () => skill.load(),
 })
 </script>

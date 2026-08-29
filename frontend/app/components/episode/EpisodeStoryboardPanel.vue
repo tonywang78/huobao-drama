@@ -1,7 +1,9 @@
 <script setup>
+import { ref } from 'vue'
 import { Loader2, Plus, X, ListTodo, Upload, Play, MapPin } from 'lucide-vue-next'
 import MentionTextarea from '~/components/MentionTextarea.vue'
 const wb = useEpisodeWorkbenchInject()
+const shotPromptSkill = ref(null)
 </script>
 
 <template>
@@ -265,15 +267,18 @@ const wb = useEpisodeWorkbenchInject()
                     <div class="detail-section">
                       <div class="detail-section-head">
                         <span class="detail-section-title">视频提示词</span>
-                        <button
-                          type="button"
-                          class="btn btn-sm"
-                          :disabled="wb.videoPromptGeneratingIds.includes(wb.selectedSb?.id) || wb.videoPromptBatch.running"
-                          @click="wb.genVideoPrompt(wb.selectedSb)"
-                        >
-                          <Loader2 v-if="wb.videoPromptGeneratingIds.includes(wb.selectedSb?.id)" :size="11" class="animate-spin" />
-                          {{ (wb.selectedSb.video_prompt || wb.selectedSb.videoPrompt) ? '重新生成' : 'AI 生成' }}
-                        </button>
+                        <div class="asset-detail-prompt-head-actions">
+                          <AgentSkillPicker ref="shotPromptSkill" agent-type="prompt_generator" label="提示词" scope="shot-detail" />
+                          <button
+                            type="button"
+                            class="btn btn-sm"
+                            :disabled="wb.videoPromptGeneratingIds.includes(wb.selectedSb?.id) || wb.videoPromptBatch.running"
+                            @click="wb.genVideoPrompt(wb.selectedSb, shotPromptSkill?.getPayload())"
+                          >
+                            <Loader2 v-if="wb.videoPromptGeneratingIds.includes(wb.selectedSb?.id)" :size="11" class="animate-spin" />
+                            {{ (wb.selectedSb.video_prompt || wb.selectedSb.videoPrompt) ? '重新生成' : 'AI 生成' }}
+                          </button>
+                        </div>
                       </div>
                       <div class="detail-section-copy">根据当前分镜的画面描述（含台词/旁白）与氛围生成</div>
                       <MentionTextarea

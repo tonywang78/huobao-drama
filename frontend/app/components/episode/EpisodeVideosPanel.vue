@@ -1,7 +1,9 @@
 <script setup>
+import { ref } from 'vue'
 import { Loader2, Plus, X, ListTodo, Upload, Play, MapPin } from 'lucide-vue-next'
 import MentionTextarea from '~/components/MentionTextarea.vue'
 const wb = useEpisodeWorkbenchInject()
+const shotPromptSkill = ref(null)
 </script>
 
 <template>
@@ -214,15 +216,18 @@ const wb = useEpisodeWorkbenchInject()
                   <section class="video-inspector-section">
                     <div class="video-inspector-prompt-head">
                       <span class="video-inspector-label video-inspector-label-hero">参考图提示词</span>
-                      <button
-                        type="button"
-                        class="btn btn-sm"
-                        :disabled="wb.videoPromptGeneratingIds.includes(wb.selectedSb?.id) || wb.videoPromptBatch.running"
-                        @click="wb.genVideoPrompt(wb.selectedSb)"
-                      >
-                        <Loader2 v-if="wb.videoPromptGeneratingIds.includes(wb.selectedSb?.id)" :size="11" class="animate-spin" />
-                        {{ (wb.selectedSb.video_prompt || wb.selectedSb.videoPrompt) ? '重新生成' : 'AI 生成' }}
-                      </button>
+                      <div class="asset-detail-prompt-head-actions">
+                        <AgentSkillPicker ref="shotPromptSkill" agent-type="prompt_generator" label="提示词" scope="shot-detail" />
+                        <button
+                          type="button"
+                          class="btn btn-sm"
+                          :disabled="wb.videoPromptGeneratingIds.includes(wb.selectedSb?.id) || wb.videoPromptBatch.running"
+                          @click="wb.genVideoPrompt(wb.selectedSb, shotPromptSkill?.getPayload())"
+                        >
+                          <Loader2 v-if="wb.videoPromptGeneratingIds.includes(wb.selectedSb?.id)" :size="11" class="animate-spin" />
+                          {{ (wb.selectedSb.video_prompt || wb.selectedSb.videoPrompt) ? '重新生成' : 'AI 生成' }}
+                        </button>
+                      </div>
                     </div>
                     <MentionTextarea
                       :model-value="wb.selectedSb.video_prompt || wb.selectedSb.videoPrompt || ''"

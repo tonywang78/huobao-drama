@@ -11,13 +11,13 @@ export type SkillSelectionValue = {
   skill_ids: string[]
 }
 
-function storageKey(agentType: string) {
-  return `huobao:skillSelection:${agentType}`
+export function skillSelectionStorageKey(agentType: string, scope?: string) {
+  return scope ? `huobao:skillSelection:${agentType}:${scope}` : `huobao:skillSelection:${agentType}`
 }
 
-function readStored(agentType: string): SkillSelectionValue | null {
+function readStored(agentType: string, scope?: string): SkillSelectionValue | null {
   try {
-    const raw = localStorage.getItem(storageKey(agentType))
+    const raw = localStorage.getItem(skillSelectionStorageKey(agentType, scope))
     if (!raw) return null
     const parsed = JSON.parse(raw)
     if (!parsed || typeof parsed !== 'object') return null
@@ -31,9 +31,9 @@ function readStored(agentType: string): SkillSelectionValue | null {
   }
 }
 
-function writeStored(agentType: string, value: SkillSelectionValue) {
+function writeStored(agentType: string, value: SkillSelectionValue, scope?: string) {
   try {
-    localStorage.setItem(storageKey(agentType), JSON.stringify(value))
+    localStorage.setItem(skillSelectionStorageKey(agentType, scope), JSON.stringify(value))
   } catch { /* ignore */ }
 }
 
@@ -45,9 +45,11 @@ export function defaultSelection(): SkillSelectionValue {
 /**
  * @param agentTypeRef string | Ref/Computed
  * @param opts.mode 'compat' = 默认不发送 body（全量）；'explicit' = 始终发送当前选择
+ * @param opts.scope 独立存储域，如 shot-detail；不传则与全局 toolbar 共用
  */
-export function useAgentSkillSelection(agentType: string | (() => string) | { value: string }, opts: { mode?: 'compat' | 'explicit' } = {}) {
+export function useAgentSkillSelection(agentType: string | (() => string) | { value: string }, opts: { mode?: 'compat' | 'explicit'; scope?: string } = {}) {
   const mode = opts.mode || 'compat'
+  const scope = opts.scope
   const resolveType = () => {
     if (typeof agentType === 'function') return agentType()
     if (agentType && typeof agentType === 'object' && 'value' in agentType) return String(agentType.value)
@@ -65,7 +67,7 @@ export function useAgentSkillSelection(agentType: string | (() => string) | { va
 
   function hydrateFromStorage() {
     const type = resolveType()
-    const stored = readStored(type)
+    const stored = readStored(type, scope)
     if (stored) {
       selection.value = stored
       customized.value = true
@@ -105,9 +107,9 @@ export function useAgentSkillSelection(agentType: string | (() => string) | { va
   }
 
   function persist() {
-    if (customized.value) writeStored(resolveType(), selection.value)
+    if (customized.value) writeStored(resolveType(), selection.value, scope)
     else {
-      try { localStorage.removeItem(storageKey(resolveType())) } catch { /* ignore */ }
+      try { localStorage.removeItem(skillSelectionStorageKey(resolveType(), scope)) } catch { /* ignore */ }
     }
   }
 

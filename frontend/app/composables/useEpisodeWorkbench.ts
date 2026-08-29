@@ -1737,7 +1737,7 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
   }
 
   // 按需为单个分镜生成视频提示词：走与批量相同的后端入口（注入 videoEngine skill）
-  async function genVideoPrompt(sb) {
+  async function genVideoPrompt(sb, skillSelection) {
     if (!sb || !epId.value) return
     if (videoPromptGeneratingIds.value.includes(sb.id) || videoPromptBatch.value.running) return
     const idx = sbs.value.indexOf(sb) + 1
@@ -1748,6 +1748,7 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
         chatModelOverride(),
         chatConfigId(),
         [sb.id],
+        skillSelection ?? readSkillSelectionPayload('prompt_generator'),
       )
       if (res?.already_running) {
         videoPromptBatch.value = { running: true, total: 0, completed: 0 }

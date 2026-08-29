@@ -1,10 +1,12 @@
 import { toast } from 'vue-sonner'
 import { api } from './useApi'
 
+import { skillSelectionStorageKey } from '~/composables/useAgentSkillSelection'
+
 /** 读取 AgentSkillPicker 持久化的 skill_selection；未自定义则 undefined（服务端全量兼容） */
-export function readSkillSelectionPayload(agentType: string) {
+export function readSkillSelectionPayload(agentType: string, scope?: string) {
   try {
-    const raw = localStorage.getItem(`huobao:skillSelection:${agentType}`)
+    const raw = localStorage.getItem(skillSelectionStorageKey(agentType, scope))
     if (!raw) return undefined
     const parsed = JSON.parse(raw)
     if (!parsed || typeof parsed !== 'object') return undefined
