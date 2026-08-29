@@ -1,24 +1,26 @@
 # 🎬 Huobao Drama - AI 短剧生成平台
 
-<div align="center">
+
 
 **基于 TypeScript 全栈的 AI 短剧自动化生产平台**
 
-[![Node Version](https://img.shields.io/badge/Node.js-20+-339933?style=flat&logo=node.js)](https://nodejs.org)
-[![Vue Version](https://img.shields.io/badge/Vue-3.x-4FC08D?style=flat&logo=vue.js)](https://vuejs.org)
-[![License](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+![Node Version](https://img.shields.io/badge/Node.js-20+-339933?style=flat&logo=node.js)
+![Vue Version](https://img.shields.io/badge/Vue-3.x-4FC08D?style=flat&logo=vue.js)
+![License](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)
 
 [功能特性](#功能特性) • [快速开始](#快速开始) • [部署指南](#部署指南)
 
-<h2>🔑 <a href="https://api.chatfire.site">获取 Huobao API Key 👉 立即查看</a></h2>
+## 🔑 [获取 Huobao API Key 👉 立即查看](https://api.chatfire.site)
 
 **文本 · 图片 · 视频全部 AI 能力，一个 Key 即可开通**
 
 部署完成后在「设置 → 火宝快捷配置」粘贴 Key，一键写入三条推荐配置，开箱即用
 
-</div>
+
 
 ---
+
+
 
 ## 📖 项目简介
 
@@ -30,6 +32,8 @@ Huobao Drama 是一个基于 AI 的短剧自动化生产平台，实现从剧本
 - **🎨 智能创作**：AI 绘图生成角色形象和场景背景
 - **📹 视频生成**：基于文生视频和图生视频模型自动生成分镜视频
 - **🔄 工作流**：完整的短剧制作工作流，从创意到成片一站式完成
+
+
 
 ### 🛠️ 技术架构
 
@@ -45,7 +49,11 @@ docker/     — init.sql 数据库初始化脚本(可选，启动时自动建表
 
 ---
 
+
+
 ## ✨ 功能特性
+
+
 
 ### 🎭 角色管理
 
@@ -53,11 +61,15 @@ docker/     — init.sql 数据库初始化脚本(可选，启动时自动建表
 - ✅ 批量角色生成
 - ✅ 角色图片上传和管理
 
+
+
 ### 🎬 视频任务
 
 - ✅ AI 自动生成视频任务
 - ✅ 场景描述和视频提示词生成
 - ✅ 按任务批量生成视频
+
+
 
 ### 🎥 视频生成
 
@@ -65,59 +77,81 @@ docker/     — init.sql 数据库初始化脚本(可选，启动时自动建表
 - ✅ FFmpeg 单镜头合成与字幕处理
 - ✅ 整集拼接导出
 
+
+
 ### 📦 资源管理
 
 - ✅ 素材库统一管理
 - ✅ 本地存储支持
 - ✅ 任务进度追踪
 
+
+
 ### 🤖 AI Agents
 
 内置 4 个 Mastra Agent，支持数据库配置和 Skill 扩展：
 
-| Agent | 职责 |
-|---|---|
-| `script_rewriter` | 小说 → 格式化剧本改写 |
-| `extractor` | 角色 / 场景 / 道具智能提取与去重 |
-| `storyboard_breaker` | 剧本 → 分镜序列拆解 |
-| `prompt_generator` | 角色/场景/道具图片提示词 + 分镜视频提示词生成 |
+
+| Agent                | 职责                        |
+| -------------------- | ------------------------- |
+| `script_rewriter`    | 小说 → 格式化剧本改写              |
+| `extractor`          | 角色 / 场景 / 道具智能提取与去重       |
+| `storyboard_breaker` | 剧本 → 分镜序列拆解               |
+| `prompt_generator`   | 角色/场景/道具图片提示词 + 分镜视频提示词生成 |
+
+
+
 
 ### 🔌 多厂商适配
 
-| 类型 | 支持厂商 |
-|---|---|
-| **文本** | OpenAI(兼容接口)、Gemini |
-| **图片** | OpenAI、Gemini、火山引擎 |
+
+| 类型     | 支持厂商                                |
+| ------ | ----------------------------------- |
+| **文本** | OpenAI(兼容接口)、Gemini                 |
+| **图片** | OpenAI、Gemini、火山引擎                  |
 | **视频** | 火山引擎 Seedance 2.0(标准 / Fast / Mini) |
+
 
 ---
 
+
+
 ## 🚀 快速开始
+
+
 
 ### 📋 环境要求
 
-| 软件 | 版本要求 | 说明 |
-|---|---|---|
-| **Node.js** | 20+ | 前后端运行环境 |
-| **npm** | 9+ | 包管理工具 |
-| **MySQL** | 8.0+ | 数据库（Docker 部署已内置，无需单独安装） |
+
+| 软件          | 版本要求 | 说明                       |
+| ----------- | ---- | ------------------------ |
+| **Node.js** | 20+  | 前后端运行环境                  |
+| **npm**     | 9+   | 包管理工具                    |
+| **MySQL**   | 8.0+ | 数据库（Docker 部署已内置，无需单独安装） |
+
 
 > **FFmpeg 无需安装**：项目通过 `ffmpeg-static` / `ffprobe-static` npm 包内置二进制，本地与 Docker 均开箱即用。
+
+
 
 ### ⚙️ 环境变量
 
 无需配置文件，通过环境变量设置（均有默认值，本地开发可零配置启动）：
 
-| 变量 | 默认值 | 说明 |
-|---|---|---|
-| `DATABASE_URL` | — | 完整 MySQL 连接串（优先） |
-| `MYSQL_HOST` / `MYSQL_PORT` | `127.0.0.1` / `3306` | 未设 `DATABASE_URL` 时分项配置 |
-| `MYSQL_USER` / `MYSQL_PASSWORD` | `huobao` / `huobao` | 同上 |
-| `MYSQL_DATABASE` | `huobao_drama` | 同上 |
-| `PORT` | `5679` | 后端服务端口 |
-| `STORAGE_PATH` | `./data/static` | 生成文件存储目录 |
+
+| 变量                              | 默认值                  | 说明                      |
+| ------------------------------- | -------------------- | ----------------------- |
+| `DATABASE_URL`                  | —                    | 完整 MySQL 连接串（优先）        |
+| `MYSQL_HOST` / `MYSQL_PORT`     | `127.0.0.1` / `3306` | 未设 `DATABASE_URL` 时分项配置 |
+| `MYSQL_USER` / `MYSQL_PASSWORD` | `huobao` / `huobao`  | 同上                      |
+| `MYSQL_DATABASE`                | `huobao_drama`       | 同上                      |
+| `PORT`                          | `5679`               | 后端服务端口                  |
+| `STORAGE_PATH`                  | `./data/static`      | 生成文件存储目录                |
+
 
 > **说明**：AI 服务的 API Key、Base URL 和模型参数全部在 Web 界面的「设置」页配置并入库，不在配置文件/环境变量中维护。
+
+
 
 ### 📥 安装依赖
 
@@ -133,7 +167,11 @@ cd backend && npm install
 cd ../frontend && npm install
 ```
 
+
+
 ### 🎯 启动项目
+
+
 
 #### 方式一：开发模式（推荐）
 
@@ -152,6 +190,8 @@ npm run dev
 - 前端地址: `http://localhost:3013`
 - 后端 API: `http://localhost:5679/api/v1`
 - 前端自动代理 `/api` 和 `/static` 到后端
+
+
 
 #### 方式二：单服务模式
 
@@ -192,9 +232,15 @@ DATABASE_URL=mysql://huobao:huobao@127.0.0.1:3306/huobao_drama npm start
 
 ---
 
+
+
 ## 📦 部署指南
 
+
+
 ### 🐳 Docker 部署（推荐）
+
+
 
 #### 方式一：Docker Compose（推荐）
 
@@ -215,13 +261,17 @@ docker compose down
 
 持久化数据：
 
-| 挂载 | 内容 |
-|---|---|
-| `./data` | 生成的图片/视频等文件 |
+
+| 挂载                    | 内容                   |
+| --------------------- | -------------------- |
+| `./data`              | 生成的图片/视频等文件          |
 | `./backend/workspace` | Agent 技能文件（设置页可在线编辑） |
-| `mysql-data`(命名卷) | MySQL 数据 |
+| `mysql-data`(命名卷)     | MySQL 数据             |
+
 
 > **提示**：compose 为源码构建方式，构建过程需从外网下载 `ffmpeg-static` / `sharp` 预编译二进制，网络受限环境请先配置 npm 镜像或代理；想跳过构建可直接使用方式二的 Docker Hub 预构建镜像。
+
+
 
 #### 方式二：Docker 命令（Docker Hub 镜像）
 
@@ -261,6 +311,8 @@ docker build -t huobao-drama:latest .
 - ✅ MySQL 健康检查 + 应用启动重试，首次部署零人工干预
 - ✅ `data/` 与 `workspace/` 目录 volume 挂载，数据与技能持久化
 
+
+
 #### 🔗 访问宿主机服务（Ollama / 本地模型）
 
 容器内可通过 `http://host.docker.internal:端口号` 访问宿主机服务。
@@ -268,17 +320,17 @@ docker build -t huobao-drama:latest .
 **配置步骤：**
 
 1. 宿主机启动服务（监听所有接口）：
-
-   ```bash
+  ```bash
    export OLLAMA_HOST=0.0.0.0:11434 && ollama serve
-   ```
-
+  ```
 2. 在 Web 界面「设置 → AI 服务配置」中填写：
-   - Base URL: `http://host.docker.internal:11434/v1`
-   - Provider: `openai`
-   - Model: `qwen2.5:latest`
+  - Base URL: `http://host.docker.internal:11434/v1`
+  - Provider: `openai`
+  - Model: `qwen2.5:latest`
 
 ---
+
+
 
 ### 🏭 传统部署方式
 
@@ -301,6 +353,8 @@ backend/workspace/skills/   # Agent 技能文件
 frontend/dist/              # 前端构建产物
 data/                       # 数据目录（首次运行自动创建）
 ```
+
+
 
 #### Nginx 反向代理
 
@@ -335,7 +389,11 @@ server {
 
 ---
 
+
+
 ## 🎨 技术栈
+
+
 
 ### 后端
 
@@ -345,6 +403,8 @@ server {
 - **AI Agent**: Mastra + AI SDK (OpenAI compatible)
 - **视频处理**: FFmpeg (fluent-ffmpeg)
 - **图片处理**: Sharp
+
+
 
 ### 前端
 
@@ -356,13 +416,20 @@ server {
 
 ---
 
+
+
 ## 📝 常见问题
+
+
 
 ### Q: Docker 容器如何访问宿主机的 Ollama？
 
 A: 使用 `http://host.docker.internal:11434/v1` 作为 Base URL。注意：
+
 1. 宿主机 Ollama 需监听 `0.0.0.0`：`export OLLAMA_HOST=0.0.0.0:11434 && ollama serve`
 2. Linux 用户使用 `docker run` 需添加：`--add-host=host.docker.internal:host-gateway`
+
+
 
 ### Q: FFmpeg 未安装或找不到？
 
@@ -382,9 +449,15 @@ A: 后端会在首次启动时自动创建所有表，检查日志确认初始�
 
 ---
 
+
+
 ## 📋 更新日志
 
+
+
 ### v3.0.0 (2026-08)
+
+
 
 #### 🚀 部署与体验优化
 
@@ -403,7 +476,11 @@ A: 后端会在首次启动时自动创建所有表，检查日志确认初始�
 - 工作台：任务列表抽屉、流水线大环节状态、选择性拼接（拼接前校验视频文件存在）
 - 素材库改版、@提及优化、剧集列表重构
 
+
+
 ### v2.0.0 (2026-04)
+
+
 
 #### 🚀 重大更新
 
@@ -422,6 +499,8 @@ A: 后端会在首次启动时自动创建所有表，检查日志确认初始�
   - 视频：火山引擎/Seedance、Vidu、阿里
 - 优化本地文件处理与参考图按需转码
 
+
+
 ### v1.0.4 (2026-01-27)
 
 - 引入本地存储策略，规避外部资源链接失效
@@ -429,10 +508,14 @@ A: 后端会在首次启动时自动创建所有表，检查日志确认初始�
 - 修复镜头切换状态重置问题
 - 添加场景迁移至章节
 
+
+
 ### v1.0.3 (2026-01-16)
 
 - 优化数据库并发访问性能
 - Docker 跨平台支持 host.docker.internal
+
+
 
 ### v1.0.2 (2026-01-14)
 
@@ -441,6 +524,8 @@ A: 后端会在首次启动时自动创建所有表，检查日志确认初始�
 - 优化错误处理和日志输出
 
 ---
+
+
 
 ## 🤝 贡献指南
 
@@ -461,17 +546,13 @@ cd ../frontend && npm run build
 
 ---
 
-## ☕ 捐赠支持
 
-如果这个项目对你有帮助，欢迎扫码请作者喝杯咖啡 ☕，你的支持是持续更新的动力！
-
-<div align="center">
-  <img src="donate.png" alt="支付宝捐赠二维码" width="240" />
-</div>
 
 ---
 
-> _"让 AI 帮我们做更有创造力的事"_
+> *"让 AI 帮我们做更有创造力的事"*
+
+
 
 ## 🔗 友情链接
 
@@ -480,3 +561,4 @@ cd ../frontend && npm run build
 - [LINUX DO](https://linux.do/) — 真正的开源精神，共建共享的技术社区
 
 ---
+

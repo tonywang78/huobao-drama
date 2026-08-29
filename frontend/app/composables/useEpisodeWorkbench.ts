@@ -936,6 +936,23 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
   const imageModelOptions = computed(() => collectModelOptions(imageConfigs.value))
   const videoModelOptions = computed(() => collectModelOptions(videoConfigs.value))
 
+  /** 顶栏选中时展示该项；否则展示「默认 · 本集锁定」 */
+  function effectiveConfigLabel(modelKey, options, lockedLabel) {
+    if (modelKey) {
+      const opt = options.find(o => o.key === modelKey)
+      if (opt) {
+        return opt.configName
+          ? `${opt.configName} · ${opt.model} (${opt.provider})`
+          : `${opt.model} (${opt.provider})`
+      }
+    }
+    return lockedLabel ? `默认 · ${lockedLabel}` : '未配置'
+  }
+  const effectiveImageConfigLabel = computed(() =>
+    effectiveConfigLabel(imageModel.value, imageModelOptions.value, lockedImageConfigLabel.value === '未配置' ? '' : lockedImageConfigLabel.value))
+  const effectiveVideoConfigLabel = computed(() =>
+    effectiveConfigLabel(videoModel.value, videoModelOptions.value, lockedVideoConfigLabel.value === '未配置' ? '' : lockedVideoConfigLabel.value))
+
   // 配置变化后校验持久化的模型是否仍存在（配置被删/模型被移除时回退默认，避免把失效模型传给后端）
   function pruneStaleModel(modelRef, optionsRef) {
     watch(optionsRef, opts => {
@@ -2757,12 +2774,14 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     duplicateAsset, duplicatingAsset,
     imageViewer, closeImageViewer, activeMerge, handleImageViewerKeydown,
     visualChars, lockedImageConfigLabel, lockedVideoConfigLabel, lockedFirstLastConfigLabel, hasFirstLastService,
+    effectiveImageConfigLabel, effectiveVideoConfigLabel,
     assetReadyCount, assetTotalCount, batchCharImages, batchSceneImages, batchPropImages,
     isPendingCharImage, isPendingSceneImage, isPendingPropImage, genCharImg, genSceneImg, genPropImg,
     isUploadingAsset, uploadAssetImage, openAssetImport,
     isGeneratingPrompt, onAssetPromptInput, assetPromptDraft, assetPromptDirty, assetEditPrompt, genAssetFinalPrompt, copyAssetFinalPrompt,
     assetFinalPrompt, isAssetImagePending, savingAssetDetail, lockedImg2imgConfigLabel, editCharImg, editSceneImg,
     selectedSb, selectedSbIds, sbSelectMode, isSbSelected, toggleSbSelect, toggleSelectAllSbs, onShotCardClick,
+    selectedVideoTaskNumber,
     selectMissingSbs, exitSbSelectMode, generateSelectedVideoPrompts, videoPromptBatch, videoPromptGeneratingIds,
     batchVideoPrompts, doBreakdown, genVideoPrompt, addStoryboard, creatingSb,
     updateField, getStoryboardCharacters, getStoryboardCharacterIds, getStoryboardProps, getStoryboardPropIds,

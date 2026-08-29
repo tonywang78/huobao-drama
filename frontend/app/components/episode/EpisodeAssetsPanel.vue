@@ -9,7 +9,7 @@ const wb = useEpisodeWorkbenchInject()
             <div class="prod-section-bar">
               <span class="dim" style="font-size:12px">资产</span>
               <span class="tag mono">{{ wb.assetReadyCount }}/{{ wb.assetTotalCount }} 已就绪</span>
-              <span class="tag">{{ wb.lockedImageConfigLabel }}</span>
+              <span class="tag">{{ wb.effectiveImageConfigLabel }}</span>
               <div class="ml-auto flex gap-1 asset-bar-actions">
                 <template v-if="wb.assetSelectMode">
                   <button class="btn btn-sm" @click="wb.exitAssetSelectMode">取消</button>

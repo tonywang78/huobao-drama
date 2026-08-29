@@ -240,6 +240,24 @@ async function resolveConfigForCancel(record: SysTaskRecord): Promise<AIConfig |
     return lockedId
   }
 
+  // 顶栏可覆盖本集锁定：取消/恢复须按任务真实 provider 找凭证，避免打到错误厂商
+  const rows = (await db.select().from(schema.aiServiceConfigs)
+    .where(eq(schema.aiServiceConfigs.serviceType, configServiceType)))
+    .filter(r => (r.provider || '').toLowerCase() === (record.provider || '').toLowerCase())
+    .sort((a, b) => (b.priority || 0) - (a.priority || 0))
+  const match = rows.find(r => r.isActive) || rows[0]
+  if (match) {
+    const models = match.model ? JSON.parse(match.model) : []
+    return {
+      provider: match.provider || '',
+      baseUrl: match.baseUrl,
+      apiKey: match.apiKey,
+      model: models[0] || '',
+      serviceType: match.serviceType as ServiceType,
+      settings: match.settings || null,
+    }
+  }
+
   if (record.storyboardId) {
     const [sb] = await db.select().from(schema.storyboards).where(eq(schema.storyboards.id, record.storyboardId))
     if (sb) {
@@ -266,22 +284,6 @@ async function resolveConfigForCancel(record: SysTaskRecord): Promise<AIConfig |
     }
   }
 
-  const rows = (await db.select().from(schema.aiServiceConfigs)
-    .where(eq(schema.aiServiceConfigs.serviceType, configServiceType)))
-    .filter(r => (r.provider || '').toLowerCase() === (record.provider || '').toLowerCase())
-    .sort((a, b) => (b.priority || 0) - (a.priority || 0))
-  const match = rows.find(r => r.isActive) || rows[0]
-  if (match) {
-    const models = match.model ? JSON.parse(match.model) : []
-    return {
-      provider: match.provider || '',
-      baseUrl: match.baseUrl,
-      apiKey: match.apiKey,
-      model: models[0] || '',
-      serviceType: match.serviceType as ServiceType,
-      settings: match.settings || null,
-    }
-  }
   return getActiveConfig(configServiceType)
 }
 

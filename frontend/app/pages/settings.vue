@@ -33,7 +33,7 @@
         <div v-if="tab === 'ai'" class="settings-scroll">
           <div class="settings-head">
             <h2 class="settings-title">AI 服务配置</h2>
-            <p class="settings-desc">先用推荐模板快速落配置，再按服务类型微调。工作台创建集时会锁定所选图片和视频能力。</p>
+            <p class="settings-desc">先用推荐模板快速落配置，再按服务类型微调。创建集时锁定为默认，工作台顶栏可随时覆盖图片与视频能力。</p>
           </div>
           <section class="card quick-card">
             <div class="quick-card-head">

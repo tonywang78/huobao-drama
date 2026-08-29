@@ -9,7 +9,7 @@ const wb = useEpisodeWorkbenchInject()
             <div class="prod-section-bar">
               <span class="dim" style="font-size:12px">分镜拆分</span>
               <span class="tag mono">{{ wb.sbs.length }} 段落 · {{ wb.totalDuration }}s</span>
-              <span class="tag">{{ wb.lockedVideoConfigLabel }}</span>
+              <span class="tag">{{ wb.effectiveVideoConfigLabel }}</span>
               <span v-if="wb.lockedFirstLastConfigLabel" class="tag">{{ wb.lockedFirstLastConfigLabel }}</span>
               <div class="ml-auto flex gap-1">
                 <button class="btn btn-sm" :disabled="wb.rn || wb.creatingSb" @click="wb.storyboardImportOpen = true">

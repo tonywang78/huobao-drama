@@ -511,7 +511,7 @@
           </label>
         </div>
         <div class="dialog-foot">
-          <span class="dialog-foot-copy">创建后自动锁定当前启用的图片与视频生成能力。</span>
+          <span class="dialog-foot-copy">创建后锁定当前启用的图片与视频为默认；工作台顶栏可随时覆盖。</span>
           <button class="btn" @click="addDialog = false">取消</button>
           <button class="btn btn-primary" :disabled="creatingEpisode" @click="addEpisode">
             {{ creatingEpisode ? '创建中...' : '创建' }}

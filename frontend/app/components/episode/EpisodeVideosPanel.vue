@@ -35,7 +35,7 @@ const wb = useEpisodeWorkbenchInject()
               </div>
               <div class="empty-title">先生成分镜</div>
               <div class="empty-desc">视频任务来自分镜拆分结果。先生成分镜描述和视频提示词，再批量生成视频。</div>
-              <div class="locked-config-banner">当前集视频模型：{{ wb.lockedVideoConfigLabel }}</div>
+              <div class="locked-config-banner">将用：{{ wb.effectiveVideoConfigLabel }}</div>
               <button class="btn btn-primary" :disabled="wb.rn" @click="wb.prodTab = 'storyboard'; wb.doBreakdown()">
                 <Loader2 v-if="wb.rt === 'storyboard_breaker'" :size="13" class="animate-spin" />
                 <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
@@ -131,7 +131,7 @@ const wb = useEpisodeWorkbenchInject()
               <aside class="video-task-player">
                 <div class="video-player-head">
                   <div class="video-player-head-info">
-                    <div class="video-player-title">分镜 {{ String(selectedVideoTaskNumber).padStart(2, '0') }}</div>
+                    <div class="video-player-title">分镜 {{ String(wb.selectedVideoTaskNumber).padStart(2, '0') }}</div>
                     <span :class="['video-task-status', 'is-' + wb.videoTaskState(wb.selectedSb)]">
                       <span :class="['dot', wb.videoTaskState(wb.selectedSb) === 'done' && 'ok', wb.videoTaskState(wb.selectedSb) === 'pending' && 'pending']" />
                       {{ wb.videoTaskStatusLabel(wb.selectedSb) }}
@@ -260,7 +260,7 @@ const wb = useEpisodeWorkbenchInject()
                     <div class="video-gen-method-head">
                       <span class="video-gen-method-kicker">方法</span>
                       <span class="video-gen-method-title">参考图</span>
-                      <span class="video-gen-method-engine">{{ wb.lockedVideoConfigLabel }}</span>
+                      <span class="video-gen-method-engine">{{ wb.effectiveVideoConfigLabel }}</span>
                     </div>
                     <div class="video-inspector-assets">
                       <button

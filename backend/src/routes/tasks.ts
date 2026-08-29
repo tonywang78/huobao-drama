@@ -46,7 +46,7 @@ app.post('/', async (c) => {
   }
 
   try {
-    // 集锁定的生成配置优先于请求指定；视频分辨率同样锁定到集
+    // 顶栏指定 config_id 优先；未指定时回退本集创建时锁定配置；视频分辨率仍锁定到集
     let configId: number | undefined = body.config_id
     let episodeResolution: string | undefined
     if (body.storyboard_id) {
@@ -58,7 +58,7 @@ app.post('/', async (c) => {
           : isFirstLast
             ? ep?.firstLastConfigId
             : ep?.videoConfigId
-        if (locked != null) configId = locked
+        configId = body.config_id ?? locked ?? undefined
         if (type === 'video' && ep?.resolution) episodeResolution = ep.resolution
       }
     }
