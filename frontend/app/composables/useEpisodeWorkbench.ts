@@ -1017,8 +1017,18 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
   }
 
   const genTaskActiveCount = computed(() =>
-    genTasks.value.filter(t => t.status === 'processing').length +
+    genTasks.value.filter(t => t.status === 'processing' || t.status === 'pending').length +
     genMerges.value.filter(m => m.status === 'processing' || m.status === 'pending').length
+  )
+  /** 本地闸门排队（尚未提交远端） */
+  const genTaskQueuedCount = computed(() =>
+    genTasks.value.filter(t => t.status === 'pending').length +
+    genMerges.value.filter(m => m.status === 'pending').length
+  )
+  /** 已提交 / 正在生成 */
+  const genTaskRunningCount = computed(() =>
+    genTasks.value.filter(t => t.status === 'processing').length +
+    genMerges.value.filter(m => m.status === 'processing').length
   )
   const genTaskDoneCount = computed(() =>
     genTasks.value.filter(t => t.status === 'completed').length +
@@ -1095,6 +1105,7 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     if (status === 'completed') return '已完成'
     if (status === 'failed') return '失败'
     if (status === 'cancelled') return '已取消'
+    if (status === 'pending') return '排队中'
     return '生成中'
   }
 
@@ -1118,10 +1129,10 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     return ms >= 60000 ? `${Math.floor(ms / 60000)}m${Math.round((ms % 60000) / 1000)}s` : `${Math.round(ms / 1000)}s`
   }
 
-  // 抽屉打开且有进行中任务时,4s 轮询;关闭或全部结束时停止
-  watch([taskDrawer, genTaskActiveCount], ([open, active]) => {
+  // 有进行中任务时 4s 轮询，供顶栏队列状态与任务抽屉共用
+  watch(genTaskActiveCount, (active) => {
     stopGenTasksPolling()
-    if (open && active > 0) {
+    if (active > 0) {
       genTasksTimer = setInterval(loadGenTasks, 4000)
     }
   })
@@ -2783,7 +2794,7 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     rawLen, scriptLen, mergeUrl, rn, rt,     chatModel, imageModel, videoModel,
     textModelOptions, imageModelOptions, videoModelOptions, textModelMultiCfg, imageModelMultiCfg, videoModelMultiCfg,
     assistantUiContext,
-    taskDrawer, genTaskActiveCount, genTaskRows, genTaskDoneCount, genTaskFailedCount,
+    taskDrawer, genTaskActiveCount, genTaskQueuedCount, genTaskRunningCount, genTaskRows, genTaskDoneCount, genTaskFailedCount,
     sidebarSections, sidebarJumpSteps, activeSubStepKey, sectionState, goSubStep,
     currentSubStageLabel, pipelineProgress, pipelineTotal, refresh, openTaskDrawer, closeTaskDrawer, loadGenTasks,
     genTaskKindLabel, genTaskStatusLabel, genTaskStateClass, genTaskPreviewSrc, genTaskDuration, openImageViewer,

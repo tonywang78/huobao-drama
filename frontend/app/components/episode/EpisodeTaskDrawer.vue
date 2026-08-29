@@ -20,10 +20,25 @@ const wb = useEpisodeWorkbenchInject()
               <button class="btn btn-ghost btn-icon" @click="wb.closeTaskDrawer"><X :size="14" /></button>
             </div>
           </header>
-          <div class="video-task-metrics task-drawer-metrics">
-            <span class="video-task-metric is-pending">{{ wb.genTaskActiveCount }} 生成中</span>
-            <span class="video-task-metric is-done">{{ wb.genTaskDoneCount }} 完成</span>
-            <span class="video-task-metric is-failed">{{ wb.genTaskFailedCount }} 失败</span>
+          <div class="task-drawer-queue" :class="{ 'is-busy': wb.genTaskActiveCount > 0 }">
+            <div class="task-drawer-queue-item is-queued">
+              <span class="task-drawer-queue-label">排队</span>
+              <strong>{{ wb.genTaskQueuedCount }}</strong>
+              <span class="task-drawer-queue-hint">等待提交</span>
+            </div>
+            <div class="task-drawer-queue-item is-running">
+              <span class="task-drawer-queue-label">执行</span>
+              <strong>{{ wb.genTaskRunningCount }}</strong>
+              <span class="task-drawer-queue-hint">生成中</span>
+            </div>
+            <div class="task-drawer-queue-item is-done">
+              <span class="task-drawer-queue-label">完成</span>
+              <strong>{{ wb.genTaskDoneCount }}</strong>
+            </div>
+            <div class="task-drawer-queue-item is-failed">
+              <span class="task-drawer-queue-label">失败</span>
+              <strong>{{ wb.genTaskFailedCount }}</strong>
+            </div>
           </div>
           <div v-if="!wb.genTaskRows.length" class="step-empty task-drawer-empty">
             <div class="empty-visual">

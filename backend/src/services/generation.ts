@@ -11,6 +11,13 @@ import { extractVideoPoster } from '../utils/video-poster.js'
 import { getImageAdapter, getVideoAdapter } from './adapters/registry'
 import type { AIConfig } from './adapters/types'
 import { logTaskError, logTaskPayload, logTaskProgress, logTaskStart, logTaskSuccess, logTaskWarn, redactUrl } from '../utils/task-logger.js'
+import {
+  acquireSlot,
+  gateKey,
+  registerSlot,
+  releaseSlot,
+  resolveQueueSize,
+} from './provider-queue-gate.js'
 
 type TaskType = 'image' | 'video'
 
@@ -288,8 +295,9 @@ async function resolveConfigForCancel(record: SysTaskRecord): Promise<AIConfig |
 }
 
 /**
- * 服务启动时恢复仍在 processing/pending 且已有远端 taskId 的轮询。
- * 只续 poll，绝不重新 buildGenerateRequest / 提交，避免重复扣费。
+ * 服务启动时恢复仍在 processing/pending 的任务：
+ * - 已有远端 taskId：只续 poll（并登记队列槽位），绝不重新提交
+ * - 无 taskId 且配置了 queueSize：重新走 processTask（崩溃卡在等槽/未提交）
  */
 export async function resumeActiveTasks(): Promise<{ resumed: number; skipped: number }> {
   const rows = await db.select().from(schema.sysTask)
@@ -299,14 +307,6 @@ export async function resumeActiveTasks(): Promise<{ resumed: number; skipped: n
   let skipped = 0
 
   for (const record of rows) {
-    if (!record.taskId) {
-      skipped++
-      logTaskWarn(taskLabel((record.type as TaskType) || 'video'), 'resume-skip-no-task-id', {
-        id: record.id,
-        provider: record.provider,
-      })
-      continue
-    }
     if (activePollIds.has(record.id)) {
       skipped++
       continue
@@ -315,12 +315,42 @@ export async function resumeActiveTasks(): Promise<{ resumed: number; skipped: n
     const config = await resolveConfigForCancel(record)
     if (!config) {
       skipped++
-      logTaskWarn(taskLabel(record.type as TaskType), 'resume-skip-no-config', {
+      logTaskWarn(taskLabel((record.type as TaskType) || 'video'), 'resume-skip-no-config', {
         id: record.id,
         provider: record.provider,
         taskId: record.taskId,
       })
       continue
+    }
+
+    const queueSize = resolveQueueSize(config.settings ?? null)
+
+    if (!record.taskId) {
+      if (queueSize == null) {
+        skipped++
+        logTaskWarn(taskLabel((record.type as TaskType) || 'video'), 'resume-skip-no-task-id', {
+          id: record.id,
+          provider: record.provider,
+        })
+        continue
+      }
+      logTaskProgress(taskLabel(record.type as TaskType), 'resume-reprocess', {
+        id: record.id,
+        provider: record.provider,
+        queueSize,
+      })
+      processTask(record.id, config).catch((err: any) => {
+        logTaskError(taskLabel(record.type as TaskType), 'resume-reprocess', {
+          id: record.id,
+          error: err?.message || String(err),
+        })
+      })
+      resumed++
+      continue
+    }
+
+    if (queueSize != null) {
+      registerSlot(gateKey(config.provider, config.baseUrl), record.id, queueSize)
     }
 
     logTaskProgress(taskLabel(record.type as TaskType), 'resume-poll', {
@@ -355,6 +385,8 @@ export async function cancelTask(id: number): Promise<SysTaskRecord | null> {
   await db.update(schema.sysTask)
     .set({ status: 'cancelled', errorMsg: '用户取消', updatedAt: now() })
     .where(eq(schema.sysTask.id, id))
+
+  releaseSlot(id)
 
   logTaskProgress(taskLabel(record.type as TaskType), 'cancel', {
     id,
@@ -421,12 +453,13 @@ async function createTask(
   params: Record<string, unknown>,
 ): Promise<number> {
   const ts = now()
+  const gated = resolveQueueSize(config.settings ?? null) != null
   const res = await db.insert(schema.sysTask).values({
     type,
     ...fields,
     provider: config.provider,
     params: JSON.stringify(params),
-    status: 'processing',
+    status: gated ? 'pending' : 'processing',
     createdAt: ts,
     updatedAt: ts,
   })
@@ -449,9 +482,16 @@ function parseTaskParams(raw: string | null | undefined): Record<string, any> {
 }
 
 async function processTask(id: number, config: AIConfig) {
+  const queueSize = resolveQueueSize(config.settings ?? null)
+  const key = queueSize != null ? gateKey(config.provider, config.baseUrl) : null
+  /** 已拿到槽位且尚未交给 poll 终态释放 */
+  let slotOwnedHere = false
+
   try {
     const [record] = await db.select().from(schema.sysTask).where(eq(schema.sysTask.id, id))
     if (!record) return
+    if (!(await isActiveTask(id))) return
+
     const type = record.type as TaskType
     const label = taskLabel(type)
     const params = parseTaskParams(record.params)
@@ -503,6 +543,33 @@ async function processTask(id: number, config: AIConfig) {
       })))
     }
 
+    if (!(await isActiveTask(id))) {
+      logTaskProgress(label, 'cancel-before-submit', { id })
+      return
+    }
+
+    if (key && queueSize != null) {
+      logTaskProgress(label, 'queue-wait', { id, key, queueSize })
+      const acquired = await acquireSlot({
+        key,
+        limit: queueSize,
+        taskId: id,
+        isActive: () => isActiveTask(id),
+      })
+      if (!acquired) {
+        logTaskProgress(label, 'queue-aborted', { id, key })
+        return
+      }
+      slotOwnedHere = true
+      await db.update(schema.sysTask)
+        .set({ status: 'processing', updatedAt: now() })
+        .where(and(
+          eq(schema.sysTask.id, id),
+          inArray(schema.sysTask.status, ['processing', 'pending']),
+        ))
+      logTaskProgress(label, 'queue-acquired', { id, key, queueSize })
+    }
+
     logTaskProgress(label, 'request', {
       id,
       provider: config.provider,
@@ -549,6 +616,7 @@ async function processTask(id: number, config: AIConfig) {
         return
       }
       await markPolling(id, taskId)
+      slotOwnedHere = false
       pollTask(record, config, taskId!)
       return
     }
@@ -567,10 +635,13 @@ async function processTask(id: number, config: AIConfig) {
       return
     }
     await markPolling(id, taskId)
+    slotOwnedHere = false
     pollTask(record, config, taskId!)
   } catch (err: any) {
     if (!(await isActiveTask(id))) return
     await failTask(id, err.message)
+  } finally {
+    if (slotOwnedHere) releaseSlot(id)
   }
 }
 
@@ -591,6 +662,7 @@ async function failTask(id: number, message: string) {
   await db.update(schema.sysTask)
     .set({ status: 'failed', errorMsg: message, updatedAt: now() })
     .where(eq(schema.sysTask.id, id))
+  releaseSlot(id)
 }
 
 async function pollTask(record: SysTaskRecord, config: AIConfig, taskId: string) {
@@ -714,6 +786,7 @@ async function pollTask(record: SysTaskRecord, config: AIConfig, taskId: string)
     await failTask(record.id, 'Timeout: polling attempts exhausted')
   } finally {
     activePollIds.delete(record.id)
+    releaseSlot(record.id)
   }
 }
 

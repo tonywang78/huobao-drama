@@ -1,5 +1,5 @@
 <script setup>
-import { Loader2, Plus, X, ListTodo, Upload, Play, MapPin, Sparkles } from 'lucide-vue-next'
+import { ListTodo, Sparkles } from 'lucide-vue-next'
 import ModelSelect from '~/components/ModelSelect.vue'
 const wb = useEpisodeWorkbenchInject()
 const assistant = useStudioAssistant()

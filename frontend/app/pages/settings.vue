@@ -394,6 +394,21 @@
           </label>
           <label class="field"><span class="field-label">API Key</span><input v-model="cfgForm.api_key" class="input" type="password" :placeholder="cfgForm.provider === 'comfyui' ? '可选，反向代理鉴权时填写' : 'sk-...'" /></label>
           <label class="field"><span class="field-label">Base URL</span><input v-model="cfgForm.base_url" class="input" placeholder="https://..." /></label>
+          <label class="field">
+            <span class="field-label">队列上限 queueSize</span>
+            <input
+              v-model.number="cfgForm.queueSize"
+              class="input"
+              type="number"
+              min="1"
+              max="20"
+              :placeholder="cfgForm.provider === 'comfyui' ? '默认 5' : '留空不限流'"
+            />
+            <span class="field-hint">
+              同时发给该后端的在途任务数（1–20）。同一 provider + Base URL 共享计数；留空表示不限流。
+              <template v-if="cfgForm.provider === 'comfyui'">ComfyUI 建议按远端队列容量填写（常见 1–5）。</template>
+            </span>
+          </label>
           <label class="field"><span class="field-label">模型（逗号分隔）</span><input v-model="cfgForm.modelStr" class="input" placeholder="model-name" /></label>
           <label v-if="cfgForm.service_type === 'video' || cfgForm.service_type === 'first_last'" class="field">
             <span class="field-label">视频引擎</span>
@@ -614,7 +629,7 @@ const cfgTesting = ref(false)
 const cfgTestResult = ref(null)
 const huobaoApiKey = ref('')
 const huobaoSaving = ref(false)
-const cfgForm = reactive({ name: '', provider: '', api_key: '', base_url: '', modelStr: '', service_type: 'text', priority: 0, workflowApiStr: '', bindings: {}, videoEngine: 'default' })
+const cfgForm = reactive({ name: '', provider: '', api_key: '', base_url: '', modelStr: '', service_type: 'text', priority: 0, workflowApiStr: '', bindings: {}, videoEngine: 'default', queueSize: null })
 const serviceTypes = [{ type: 'text', label: '文本' }, { type: 'image', label: '图片' }, { type: 'img2img', label: '图生图' }, { type: 'video', label: '视频' }, { type: 'first_last', label: '首尾帧' }]
 const providers = ['gemini', 'openai', 'volcengine', 'minimax', 'comfyui']
 const providerSelectOptions = computed(() => providers.map(p => ({ label: p, value: p })))
@@ -698,6 +713,7 @@ function applyProviderPreset(type, provider) {
   if (type === 'video' || type === 'first_last') {
     cfgForm.videoEngine = defaultVideoEngineForProvider(provider)
   }
+  cfgForm.queueSize = provider === 'comfyui' ? 5 : null
 }
 
 const showComfyWorkflowEditor = computed(() =>
@@ -727,10 +743,23 @@ function bindingsFromSettings(settings) {
   return out
 }
 
+function queueSizeFromSettings(settings) {
+  const raw = settings?.queueSize
+  if (raw === undefined || raw === null || raw === '') return null
+  const n = Number(raw)
+  if (!Number.isFinite(n)) return null
+  const int = Math.floor(n)
+  if (int < 1 || int > 20) return null
+  return int
+}
+
 function buildSettingsPayload() {
   const videoEngine = (cfgForm.service_type === 'video' || cfgForm.service_type === 'first_last')
     ? (cfgForm.videoEngine || defaultVideoEngineForProvider(cfgForm.provider))
     : undefined
+
+  const queueSize = queueSizeFromSettings({ queueSize: cfgForm.queueSize })
+  const queuePart = queueSize != null ? { queueSize } : {}
 
   if (showComfyWorkflowEditor.value) {
     const raw = cfgForm.workflowApiStr.trim()
@@ -738,6 +767,7 @@ function buildSettingsPayload() {
     const base = {
       bindings: Object.keys(bindings).length ? bindings : {},
       ...(videoEngine ? { videoEngine } : {}),
+      ...queuePart,
     }
     if (!raw) {
       return { workflowApi: null, ...base }
@@ -752,7 +782,15 @@ function buildSettingsPayload() {
     }
   }
 
-  if (videoEngine) return { videoEngine }
+  const out = {
+    ...(videoEngine ? { videoEngine } : {}),
+    ...queuePart,
+  }
+  if (Object.keys(out).length) return out
+  // 编辑媒体配置时若清空 queueSize，回写空对象以去掉旧 settings.queueSize
+  if (cfgEditId.value && ['image', 'img2img', 'video', 'first_last'].includes(cfgForm.service_type)) {
+    return {}
+  }
   return undefined
 }
 
@@ -881,6 +919,7 @@ function startAddCfg(t) {
     workflowApiStr: '',
     bindings: {},
     videoEngine: 'default',
+    queueSize: null,
   })
   const firstPreset = presetsByType(t)[0]
   if (firstPreset) applyProviderPreset(t, firstPreset.provider)
@@ -901,6 +940,7 @@ function startEditCfg(c) {
     workflowApiStr: workflowApiFromSettings(c.settings),
     bindings: bindingsFromSettings(c.settings),
     videoEngine: fromSettings || defaultVideoEngineForProvider(c.provider),
+    queueSize: queueSizeFromSettings(c.settings),
   })
   cfgDialog.value = true
   nextTick(() => {
