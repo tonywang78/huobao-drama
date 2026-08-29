@@ -62,6 +62,7 @@ description: 火宝短剧工作室通用助手：识别当前工序、对话调�
 
 | 用户意图 | action |
 | 要把这集改成剧本 / 重写剧本 | script_rewriter |
+| 散文、景点介绍、随笔、日记改成旁白视频剧本（无对白） | script_rewriter |
 | 从剧本抠角色场景道具 | extractor |
 | 拆分镜 / 重做分镜 | storyboard_breaker |
 | 批量补视频提示词 | video_prompts |

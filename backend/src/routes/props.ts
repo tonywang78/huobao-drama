@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm'
 import { db, getInsertId, schema } from '../db/index.js'
 import { success, created, badRequest, notFound, now } from '../utils/response.js'
 import { toSnakeCase } from '../utils/transform.js'
-import { generateImage } from '../services/generation.js'
+import { generateImage, generateImageEdit } from '../services/generation.js'
 import { getDramaStylePrompt } from '../services/style-preset.js'
 import { ensurePropFinalPrompt } from '../services/final-prompt.js'
 import { parseRawSkillSelection, resolveSkillSelection } from '../agents/skills.js'
@@ -165,6 +165,42 @@ app.post('/:id/generate-image', async (c) => {
     return success(c, { image_generation_id: genId })
   } catch (err: any) {
     logTaskError('PropImage', 'generate', { propId: id, error: err.message })
+    return badRequest(c, err.message)
+  }
+})
+
+// POST /props/:id/edit-image — 基于当前道具图 + 修改提示词改图（img2img）
+app.post('/:id/edit-image', async (c) => {
+  const id = Number(c.req.param('id'))
+  const body = await c.req.json()
+  const [prop] = await db.select().from(schema.props).where(eq(schema.props.id, id))
+  if (!prop) return badRequest(c, 'Prop not found')
+  if (!body.episode_id) return badRequest(c, 'episode_id is required')
+
+  const editPrompt = String(body.edit_prompt ?? body.editPrompt ?? '').trim()
+  if (!editPrompt) return badRequest(c, 'edit_prompt is required')
+
+  const sourceImage = prop.imageUrl || prop.localPath
+  if (!sourceImage) return badRequest(c, '道具尚无图片，请先生成或上传道具图')
+
+  const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, Number(body.episode_id)))
+  if (!ep) return badRequest(c, 'Episode not found')
+
+  try {
+    logTaskStart('PropImage', 'edit', { propId: id, episodeId: ep.id, dramaId: prop.dramaId })
+    const genId = await generateImageEdit({
+      propId: id,
+      dramaId: prop.dramaId,
+      prompt: editPrompt,
+      referenceImages: [sourceImage],
+      model: body.model,
+      size: PROP_IMAGE_SIZE,
+      configId: body.config_id ?? ep.img2imgConfigId ?? undefined,
+    })
+    logTaskSuccess('PropImage', 'edit', { propId: id, generationId: genId })
+    return success(c, { image_generation_id: genId })
+  } catch (err: any) {
+    logTaskError('PropImage', 'edit', { propId: id, error: err.message })
     return badRequest(c, err.message)
   }
 })

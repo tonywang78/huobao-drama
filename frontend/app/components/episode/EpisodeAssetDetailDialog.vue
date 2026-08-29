@@ -9,7 +9,7 @@ const wb = useEpisodeWorkbenchInject()
 const assetEditSnippets = ref([])
 const assetEditSnippetChips = computed(() => {
   const type = wb.assetDetail.type
-  if (type !== 'character' && type !== 'scene') return []
+  if (type !== 'character' && type !== 'scene' && type !== 'prop') return []
   return filterSnippetsForAssetType(assetEditSnippets.value, type)
 })
 
@@ -246,7 +246,7 @@ watch(
               </p>
             </section>
 
-            <section v-if="wb.assetDetail.type === 'character' || wb.assetDetail.type === 'scene'" class="asset-detail-prompt-panel asset-detail-edit-panel">
+            <section v-if="wb.assetDetail.type === 'character' || wb.assetDetail.type === 'scene' || wb.assetDetail.type === 'prop'" class="asset-detail-prompt-panel asset-detail-edit-panel">
               <div class="asset-detail-section-title">
                 <span>改图 · 图生图</span>
                 <span v-if="wb.lockedImg2imgConfigLabel" class="tag tag-accent">{{ wb.lockedImg2imgConfigLabel }}</span>
@@ -270,22 +270,32 @@ watch(
                 rows="3"
                 :placeholder="wb.assetDetail.type === 'character'
                   ? '基于当前角色图修改，如：把衣服改成红色，增加配饰…'
-                  : '基于当前场景图修改，如：把天空改成傍晚，增加暖色灯光…'"
+                  : wb.assetDetail.type === 'scene'
+                    ? '基于当前场景图修改，如：把天空改成傍晚，增加暖色灯光…'
+                    : '基于当前道具图修改，如：把材质改成金属，增加磨损痕迹…'"
                 :disabled="!wb.assetImageSrc(wb.assetDetail.item) || wb.isAssetImagePending(wb.assetDetail.type, wb.assetDetail.item.id)"
               />
               <p class="asset-detail-prompt-hint">
                 {{ wb.assetImageSrc(wb.assetDetail.item)
                   ? (wb.assetDetail.type === 'character'
                     ? '改图会保留当前构图，仅按提示词调整细节；完整重生成请用「重绘形象」。'
-                    : '改图会保留当前构图，仅按提示词调整细节；完整重生成请用「重绘场景」。')
-                  : (wb.assetDetail.type === 'character' ? '请先生成或上传角色图后再改图。' : '请先生成或上传场景图后再改图。') }}
+                    : wb.assetDetail.type === 'scene'
+                      ? '改图会保留当前构图，仅按提示词调整细节；完整重生成请用「重绘场景」。'
+                      : '改图会保留当前构图，仅按提示词调整细节；完整重生成请用「重绘道具图」。')
+                  : (wb.assetDetail.type === 'character'
+                    ? '请先生成或上传角色图后再改图。'
+                    : wb.assetDetail.type === 'scene'
+                      ? '请先生成或上传场景图后再改图。'
+                      : '请先生成或上传道具图后再改图。') }}
               </p>
               <button
                 class="btn btn-sm"
                 :disabled="!wb.assetImageSrc(wb.assetDetail.item) || !wb.assetEditPrompt.trim() || wb.isAssetImagePending(wb.assetDetail.type, wb.assetDetail.item.id)"
                 @click="wb.assetDetail.type === 'character'
                   ? wb.editCharImg(wb.assetDetail.item.id, wb.assetEditPrompt)
-                  : wb.editSceneImg(wb.assetDetail.item.id, wb.assetEditPrompt)"
+                  : wb.assetDetail.type === 'scene'
+                    ? wb.editSceneImg(wb.assetDetail.item.id, wb.assetEditPrompt)
+                    : wb.editPropImg(wb.assetDetail.item.id, wb.assetEditPrompt)"
               >
                 <Loader2 v-if="wb.isAssetImagePending(wb.assetDetail.type, wb.assetDetail.item.id)" :size="11" class="animate-spin" />
                 {{ wb.isAssetImagePending(wb.assetDetail.type, wb.assetDetail.item.id) ? '改图中' : '改图' }}

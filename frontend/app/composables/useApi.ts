@@ -141,6 +141,7 @@ export const propAPI = {
       skill_selection: skillSelection,
     }),
   generateImage: (id: number, episodeId: number, model?: string, configId?: number, textModel?: string, textConfigId?: number) => api.post(`/props/${id}/generate-image`, { episode_id: episodeId, model: model || undefined, config_id: configId || undefined, text_model: textModel || undefined, text_config_id: textConfigId || undefined }),
+  editImage: (id: number, episodeId: number, editPrompt: string, configId?: number, model?: string) => api.post(`/props/${id}/edit-image`, { episode_id: episodeId, edit_prompt: editPrompt, config_id: configId || undefined, model: model || undefined }),
 }
 
 // 统一生成任务（图片/视频）：POST 带 type 字段，列表按 type 过滤

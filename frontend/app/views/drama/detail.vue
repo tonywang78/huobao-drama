@@ -403,11 +403,15 @@
               ></textarea>
             </section>
 
-            <!-- 改图 · 图生图（角色 / 场景） -->
-            <section v-if="editTarget.kindKey === 'character' || editTarget.kindKey === 'scene'" class="mat-detail-prompt-panel">
+            <!-- 改图 · 图生图（角色 / 场景 / 道具） -->
+            <section v-if="editTarget.kindKey === 'character' || editTarget.kindKey === 'scene' || editTarget.kindKey === 'prop'" class="mat-detail-prompt-panel">
               <div class="mat-detail-section-title">
                 <span>改图 · 图生图</span>
-                <span class="dim">{{ editTarget.kindKey === 'character' ? '基于当前角色图按提示词微调，完整重生成请用「重新生成」' : '基于当前场景图按提示词微调，完整重生成请用「重新生成」' }}</span>
+                <span class="dim">{{ editTarget.kindKey === 'character'
+                  ? '基于当前角色图按提示词微调，完整重生成请用「重新生成」'
+                  : editTarget.kindKey === 'scene'
+                    ? '基于当前场景图按提示词微调，完整重生成请用「重新生成」'
+                    : '基于当前道具图按提示词微调，完整重生成请用「重新生成」' }}</span>
               </div>
               <div v-if="matEditSnippetChips.length" class="mat-edit-snippet-chips">
                 <button
@@ -428,14 +432,20 @@
                 rows="3"
                 :placeholder="editTarget.kindKey === 'character'
                   ? '如：把衣服改成红色，增加金色配饰…'
-                  : '如：把天空改成傍晚，增加暖色灯光…'"
+                  : editTarget.kindKey === 'scene'
+                    ? '如：把天空改成傍晚，增加暖色灯光…'
+                    : '如：把材质改成金属，增加磨损痕迹…'"
                 :disabled="!matHasImage(editTarget) || isPending(editTarget)"
               ></textarea>
               <button
                 class="btn btn-sm mat-detail-prompt-gen"
                 style="margin-top:8px"
                 :disabled="!matHasImage(editTarget) || !String(editDraft.assetEditPrompt || '').trim() || isPending(editTarget) || !firstEpisodeId"
-                @click="editTarget.kindKey === 'character' ? editCharacterMaterial(editTarget) : editSceneMaterial(editTarget)"
+                @click="editTarget.kindKey === 'character'
+                  ? editCharacterMaterial(editTarget)
+                  : editTarget.kindKey === 'scene'
+                    ? editSceneMaterial(editTarget)
+                    : editPropMaterial(editTarget)"
               >
                 {{ isPending(editTarget) ? '改图中…' : '改图' }}
               </button>
@@ -959,7 +969,7 @@ const editDraft = reactive({})
 const matEditSnippets = ref([])
 const matEditSnippetChips = computed(() => {
   const type = editTarget.value?.kindKey
-  if (type !== 'character' && type !== 'scene') return []
+  if (type !== 'character' && type !== 'scene' && type !== 'prop') return []
   return filterSnippetsForAssetType(matEditSnippets.value, type)
 })
 
@@ -1003,7 +1013,7 @@ function openEdit(m) {
   }
   editDraft.finalPrompt = m.finalPrompt || m.final_prompt || ''
   editDialog.value = true
-  if (m.kindKey === 'character' || m.kindKey === 'scene') loadMatEditSnippets()
+  if (m.kindKey === 'character' || m.kindKey === 'scene' || m.kindKey === 'prop') loadMatEditSnippets()
 }
 
 // 生成/重新生成最终提示词（不生图）：调用各类型 generate-prompt 接口，结果写回 draft
@@ -1045,6 +1055,25 @@ async function editCharacterMaterial(m) {
   try {
     await characterAPI.editImage(m.id, epId, prompt, lockedImg2imgConfigId.value || undefined)
     toast.success(`角色「${m.name}」改图中`)
+    pollMaterial(m)
+  } catch (e) {
+    pendingMaterials.value = new Set([...pendingMaterials.value].filter(k => k !== key))
+    toast.error(e.message)
+  }
+}
+
+async function editPropMaterial(m) {
+  const epId = firstEpisodeId.value
+  if (!epId) { toast.error('请先在「剧集列表」创建至少一集，才能改图'); return }
+  const prompt = String(editDraft.assetEditPrompt || '').trim()
+  if (!prompt) { toast.warning('请输入改图提示词'); return }
+  if (!matHasImage(m)) { toast.warning('请先生成或上传道具图'); return }
+  const key = pendingKey(m)
+  if (pendingMaterials.value.has(key)) return
+  pendingMaterials.value = new Set(pendingMaterials.value).add(key)
+  try {
+    await propAPI.editImage(m.id, epId, prompt, lockedImg2imgConfigId.value || undefined)
+    toast.success(`道具「${m.name}」改图中`)
     pollMaterial(m)
   } catch (e) {
     pendingMaterials.value = new Set([...pendingMaterials.value].filter(k => k !== key))

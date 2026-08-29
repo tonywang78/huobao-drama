@@ -1897,6 +1897,30 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
       toast.error(e.message)
     }
   }
+  async function editPropImg(id, editPrompt) {
+    const prompt = String(editPrompt || '').trim()
+    if (!prompt) { toast.warning('请输入改图提示词'); return }
+    const prop = propItems.value.find(p => p.id === id)
+    if (!prop?.image_url && !prop?.imageUrl && !prop?.local_path && !prop?.localPath) {
+      toast.warning('请先生成或上传道具图')
+      return
+    }
+    try {
+      if (!isPendingPropImage(id)) pendingPropImageIds.value.push(id)
+      await propAPI.editImage(id, epId.value, prompt, lockedImg2imgConfigId.value || undefined)
+      toast.success('道具改图中')
+      await refresh()
+      watchAsyncResult(() => {
+        const p = propItems.value.find(x => x.id === id)
+        const done = !!(p?.image_url || p?.imageUrl)
+        if (done) pendingPropImageIds.value = pendingPropImageIds.value.filter(item => item !== id)
+        return done
+      })
+    } catch (e) {
+      pendingPropImageIds.value = pendingPropImageIds.value.filter(item => item !== id)
+      toast.error(e.message)
+    }
+  }
   function isPendingPropImage(id) {
     return pendingPropImageIds.value.includes(id)
   }
@@ -2787,7 +2811,7 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     isPendingCharImage, isPendingSceneImage, isPendingPropImage, genCharImg, genSceneImg, genPropImg,
     isUploadingAsset, uploadAssetImage, openAssetImport,
     isGeneratingPrompt, onAssetPromptInput, assetPromptDraft, assetPromptDirty, assetEditPrompt, genAssetFinalPrompt, copyAssetFinalPrompt,
-    assetFinalPrompt, isAssetImagePending, savingAssetDetail, lockedImg2imgConfigLabel, editCharImg, editSceneImg,
+    assetFinalPrompt, isAssetImagePending, savingAssetDetail, lockedImg2imgConfigLabel, editCharImg, editSceneImg, editPropImg,
     selectedSb, selectedSbIds, sbSelectMode, isSbSelected, toggleSbSelect, toggleSelectAllSbs, onShotCardClick,
     selectedVideoTaskNumber,
     selectMissingSbs, exitSbSelectMode, generateSelectedVideoPrompts, videoPromptBatch, videoPromptGeneratingIds,
