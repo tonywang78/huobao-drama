@@ -11,6 +11,8 @@ import { now } from '../../utils/response.js'
 import { linkCharToEpisode, linkPropToEpisode, linkSceneToEpisode } from '../../utils/episode-assets.js'
 import { logTaskProgress, logTaskSuccess } from '../../utils/task-logger.js'
 import { getDramaId, getEpisodeId } from '../context.js'
+import { normalizeShotStyle } from '../../services/shot-style.js'
+import { formatStoryboardDescription } from '../../utils/storyboard-description.js'
 
 async function syncStoryboardCharacters(storyboardId: number, characterIds: number[]) {
   await db.delete(schema.storyboardCharacters)
@@ -195,6 +197,7 @@ const readStoryboardContext = createTool({
           duration: sb.duration || 0,
           description: sb.description || '',
           atmosphere: sb.atmosphere || '',
+          shot_style: sb.shotStyle || 'default',
           video_prompt: sb.videoPrompt || '',
         }
       }))
@@ -240,6 +243,8 @@ const saveStoryboards = createTool({
       description: z.string().optional(),
       result: z.string().optional(),
       atmosphere: z.string().optional(),
+      shot_style: z.enum(['default', 'documentary', 'art_film', 'fight']).optional()
+        .describe('Lens language style: fight / documentary / art_film / default'),
       image_prompt: z.string().optional(),
       video_prompt: z.string().optional(),
       bgm_prompt: z.string().optional(),
@@ -281,8 +286,9 @@ const saveStoryboards = createTool({
         title: sb.title, shotType: sb.shot_type,
         angle: sb.angle, movement: sb.movement,
         location: sb.location, time: sb.time,
-        description: sb.description, result: sb.result,
-        atmosphere: sb.atmosphere, imagePrompt: sb.image_prompt,
+        description: formatStoryboardDescription(sb.description), result: sb.result,
+        atmosphere: sb.atmosphere, shotStyle: normalizeShotStyle(sb.shot_style),
+        imagePrompt: sb.image_prompt,
         videoPrompt: sb.video_prompt, bgmPrompt: sb.bgm_prompt,
         soundEffect: sb.sound_effect,
         sceneId: sb.scene_id, duration: sb.duration || 10,
@@ -329,6 +335,7 @@ const updateStoryboard = createTool({
     time: z.string().optional(),
     result: z.string().optional(),
     atmosphere: z.string().optional(),
+    shot_style: z.enum(['default', 'documentary', 'art_film', 'fight']).optional(),
     image_prompt: z.string().optional(),
     video_prompt: z.string().optional(),
     bgm_prompt: z.string().optional(),
@@ -384,11 +391,12 @@ const updateStoryboard = createTool({
     if (hasDefinedField(fields, 'time')) updates.time = fields.time
     if (hasDefinedField(fields, 'result')) updates.result = fields.result
     if (hasDefinedField(fields, 'atmosphere')) updates.atmosphere = fields.atmosphere
+    if (hasDefinedField(fields, 'shot_style')) updates.shotStyle = normalizeShotStyle(fields.shot_style)
     if (hasDefinedField(fields, 'image_prompt')) updates.imagePrompt = fields.image_prompt
     if (hasDefinedField(fields, 'video_prompt')) updates.videoPrompt = fields.video_prompt
     if (hasDefinedField(fields, 'bgm_prompt')) updates.bgmPrompt = fields.bgm_prompt
     if (hasDefinedField(fields, 'sound_effect')) updates.soundEffect = fields.sound_effect
-    if (hasDefinedField(fields, 'description')) updates.description = fields.description
+    if (hasDefinedField(fields, 'description')) updates.description = formatStoryboardDescription(fields.description as string)
     if (hasPresentField(fields, 'scene_id')) updates.sceneId = fields.scene_id
     if (hasDefinedField(fields, 'duration')) updates.duration = fields.duration
     await db.update(schema.storyboards).set(updates).where(eq(schema.storyboards.id, storyboard_id))

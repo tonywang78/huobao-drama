@@ -71,13 +71,23 @@ export function buildVideoPromptUserMessage(opts: {
   configLabel: string
   engine: VideoEngine
   engineSkill: string
+  shotStyle?: string
+  styleSkill?: string
 }): string {
   const { storyboardNumber, storyboardId, configLabel, engine, engineSkill } = opts
   const skillBlock = engineSkill
     ? `\n\n## 当前引擎规范（videoEngine=${engine}）\n须遵守下列引擎增量规范；若与底座 video-prompt 冲突，以本段为准。\n\n${engineSkill}`
     : `\n\n当前引擎: ${engine}（无额外引擎 skill 文件，仅遵守底座 video-prompt）。`
 
-  return `请为分镜 #${storyboardNumber}(ID:${storyboardId})生成视频提示词(video_prompt)。
+  const base = `请为分镜 #${storyboardNumber}(ID:${storyboardId})生成视频提示词(video_prompt)。
 视频配置: ${configLabel}；videoEngine: ${engine}。请以本消息中的 videoEngine 与引擎规范为准生成，不要仅凭配置名称猜测。
 请先调用 read_storyboard_context 获取该分镜的画面描述(含【镜头N】子镜头与台词/旁白)、氛围及时长，据此生成 video_prompt(按 3 秒分段换行、用 @角色名/@场景名/@道具名 引用参考素材；段落内允许多镜头切镜，段与段可以是不同景别/角度/对象，但不跨场景，切镜点对齐分镜 description 的【镜头N】结构),然后调用 update_storyboard_video_prompt 保存到分镜 ID:${storyboardId}。不要调用 update_storyboard，不要重新拆分整集。${skillBlock}`
+
+  // 延迟导入避免与 shot-style ↔ video 循环；此处仅拼消息
+  const shotStyle = opts.shotStyle || 'default'
+  const styleSkill = opts.styleSkill || ''
+  if (shotStyle === 'default' || !styleSkill) {
+    return `${base}\n\n当前分镜 shot_style=${shotStyle}（无额外戏种风格包）。`
+  }
+  return `${base}\n\n## 当前镜头风格规范（shot_style=${shotStyle}）\n须遵守下列戏种增量规范；若与底座 video-prompt 冲突，以本段为准；若与 videoEngine 引擎规范冲突，以引擎规范为准。\n\n${styleSkill}`
 }

@@ -4,6 +4,8 @@ import { db, getInsertId, schema } from '../db/index.js'
 import { success, created, now, badRequest } from '../utils/response.js'
 import { toSnakeCase } from '../utils/transform.js'
 import { logTaskPayload, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
+import { applyShotStyle, normalizeShotStyle } from '../services/shot-style.js'
+import { formatStoryboardDescription } from '../utils/storyboard-description.js'
 
 const app = new Hono()
 
@@ -215,6 +217,7 @@ app.put('/:id', async (c) => {
     last_frame_prompt: 'lastFramePrompt',
     image_prompt: 'imagePrompt', scene_id: 'sceneId', location: 'location',
     time: 'time', atmosphere: 'atmosphere', result: 'result',
+    shot_style: 'shotStyle',
     bgm_prompt: 'bgmPrompt', sound_effect: 'soundEffect',
     video_url: 'videoUrl',
     first_frame_image: 'firstFrameImage',
@@ -223,7 +226,12 @@ app.put('/:id', async (c) => {
 
   const updates: Record<string, any> = { updatedAt: now() }
   for (const [snakeKey, camelKey] of Object.entries(fieldMap)) {
-    if (snakeKey in body) updates[camelKey] = body[snakeKey]
+    if (snakeKey in body) {
+      let value = body[snakeKey]
+      if (snakeKey === 'shot_style') value = normalizeShotStyle(value)
+      if (snakeKey === 'description') value = formatStoryboardDescription(value)
+      updates[camelKey] = value
+    }
   }
 
   await validateStoryboardBindings(
@@ -243,6 +251,23 @@ app.put('/:id', async (c) => {
     propIds: body.prop_ids,
   })
   return success(c)
+})
+
+// POST /storyboards/:id/apply-shot-style — 改镜头风格并按风格包重写 description
+app.post('/:id/apply-shot-style', async (c) => {
+  const id = Number(c.req.param('id'))
+  const body = await c.req.json().catch(() => ({}))
+  try {
+    const result = await applyShotStyle({
+      storyboardId: id,
+      shotStyle: body.shot_style ?? body.shotStyle,
+      model: body.text_model || body.textModel || body.model,
+      configId: body.text_config_id || body.textConfigId || body.config_id || body.configId,
+    })
+    return success(c, result)
+  } catch (err: any) {
+    return badRequest(c, err?.message || '应用镜头风格失败')
+  }
 })
 
 // DELETE /storyboards/:id — 同时清理角色/道具绑定与关联 sys_task（视频生成记录）

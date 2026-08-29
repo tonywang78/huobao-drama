@@ -1432,6 +1432,52 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     storyboardAPI.update(sb.id, { [field]: value }).catch(e => toast.error(e.message))
   }
 
+  const SHOT_STYLE_OPTIONS = [
+    { value: 'default', label: '默认' },
+    { value: 'documentary', label: '纪录片' },
+    { value: 'art_film', label: '文艺片' },
+    { value: 'fight', label: '打斗' },
+  ]
+
+  function shotStyleOf(sb) {
+    return sb?.shot_style || sb?.shotStyle || 'default'
+  }
+
+  function shotStyleLabel(style) {
+    return SHOT_STYLE_OPTIONS.find(o => o.value === style)?.label || '默认'
+  }
+
+  /** 只改标签，不触发生成 */
+  function changeShotStyle(sb, style) {
+    if (!sb?.id) return
+    const next = style || 'default'
+    if (shotStyleOf(sb) === next) return
+    updateField(sb, 'shot_style', next)
+  }
+
+  const rewritingShotStyleIds = ref([])
+
+  /** 按当前镜头风格手动重写分镜描述（清空过期 video_prompt） */
+  async function rewriteShotStyleDescription(sb) {
+    if (!sb?.id) return
+    if (rewritingShotStyleIds.value.includes(sb.id)) return
+    rewritingShotStyleIds.value = [...rewritingShotStyleIds.value, sb.id]
+    try {
+      const updated = await storyboardAPI.applyShotStyle(sb.id, { shot_style: shotStyleOf(sb) })
+      Object.assign(sb, updated)
+      sb.shot_style = updated.shot_style || shotStyleOf(sb)
+      sb.shotStyle = updated.shot_style || shotStyleOf(sb)
+      sb.video_prompt = updated.video_prompt || ''
+      sb.videoPrompt = updated.video_prompt || ''
+      if (selectedSb.value?.id === sb.id) selectedSb.value = sb
+      toast.success('描述已按当前风格重写，请重新生成视频提示词')
+    } catch (e) {
+      toast.error(e.message || '按风格重写失败')
+    } finally {
+      rewritingShotStyleIds.value = rewritingShotStyleIds.value.filter(id => id !== sb.id)
+    }
+  }
+
   function toCamel(field) {
     return field.replace(/_([a-z])/g, (_, c) => c.toUpperCase())
   }
@@ -2828,7 +2874,8 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     selectedVideoTaskNumber,
     selectMissingSbs, exitSbSelectMode, generateSelectedVideoPrompts, videoPromptBatch, videoPromptGeneratingIds,
     batchVideoPrompts, doBreakdown, genVideoPrompt, addStoryboard, creatingSb,
-    updateField, getStoryboardCharacters, getStoryboardCharacterIds, getStoryboardProps, getStoryboardPropIds,
+    updateField, changeShotStyle, rewriteShotStyleDescription, shotStyleOf, shotStyleLabel, SHOT_STYLE_OPTIONS, rewritingShotStyleIds,
+    getStoryboardCharacters, getStoryboardCharacterIds, getStoryboardProps, getStoryboardPropIds,
     getSceneName, getStoryboardScene, toggleStoryboardCharacter, toggleStoryboardProp, totalDuration,
     firstFrameOf, lastFrameOf, frameSrc, framesReadyCount, isPendingFrame, isUploadingFrame,
     genStoryboardFrame, uploadStoryboardFrame, clearStoryboardFrame, mentionOptions, firstLastMentionOptions, refBindableAssets, toggleShotBind,

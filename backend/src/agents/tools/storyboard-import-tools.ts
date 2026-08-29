@@ -14,6 +14,8 @@ const storyboardCandidateSchema = z.object({
   video_prompt: z.string().describe('English I2V / motion prompt; empty if missing'),
   duration: z.number().optional().describe('Duration in seconds from title like (4s)'),
   atmosphere: z.string().optional().describe('Optional mood / atmosphere'),
+  shot_style: z.enum(['default', 'documentary', 'art_film', 'fight']).optional()
+    .describe('Optional lens style tag'),
   confidence: z.enum(['high', 'medium', 'low']).optional(),
 })
 
@@ -44,6 +46,7 @@ const submitStoryboardCandidates = createTool({
         description: (item.description || '').trim(),
         video_prompt: (item.video_prompt || '').trim(),
         atmosphere: (item.atmosphere || '').trim() || undefined,
+        shot_style: item.shot_style,
         duration,
         confidence: item.confidence || 'medium',
       })

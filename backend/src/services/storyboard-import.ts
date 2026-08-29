@@ -9,6 +9,8 @@ import type { StoryboardImportCandidate } from '../agents/tools/storyboard-impor
 import { db, getInsertId, schema } from '../db/index.js'
 import { now } from '../utils/response.js'
 import { logTaskError, logTaskProgress, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
+import { normalizeShotStyle } from './shot-style.js'
+import { formatStoryboardDescription } from '../utils/storyboard-description.js'
 
 export async function parseStoryboardImport(
   episodeId: number,
@@ -90,6 +92,7 @@ export interface ConfirmStoryboardImportItem {
   video_prompt?: string
   duration?: number
   atmosphere?: string
+  shot_style?: string
   selected?: boolean
 }
 
@@ -145,7 +148,9 @@ export async function confirmStoryboardImport(
 
   for (const item of selected) {
     const duration = normalizeDuration(item.duration)
-    const description = (item.description || '').trim() || (item.title || '').trim() || '（导入分镜）'
+    const description = formatStoryboardDescription(
+      (item.description || '').trim() || (item.title || '').trim() || '（导入分镜）',
+    )
     const res = await db.insert(schema.storyboards).values({
       episodeId,
       storyboardNumber: nextNumber,
@@ -153,6 +158,7 @@ export async function confirmStoryboardImport(
       description,
       videoPrompt: (item.video_prompt || '').trim() || null,
       atmosphere: (item.atmosphere || '').trim() || null,
+      shotStyle: normalizeShotStyle(item.shot_style),
       duration,
       createdAt: ts,
       updatedAt: ts,

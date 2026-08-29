@@ -25,11 +25,13 @@ fs.mkdirSync(SKILLS_DIR, { recursive: true })
  * 注意：`prompt-generator/video-engines/*` 也在 Skills 高级配置里维护（属 prompt_generator 前缀），
  * 但故意不列入本 map —— 避免注入角色/场景/道具提示词；生成 video_prompt 时由 video-engine 服务按
  * settings.videoEngine 按需读取并写入 user message。
+ * `shot-styles/*` 挂在 storyboard_breaker 下供拆镜识别；prompt_generator 侧按分镜 shot_style 写入 user message。
  */
 const AGENT_SKILL_MAP: Record<string, string[]> = {
   script_rewriter: ['script-rewriter'],
   extractor: ['extractor'],
-  storyboard_breaker: ['storyboard-breaker'],
+  // shot-styles：拆镜时注入戏种运镜包；prompt_generator 不挂此处（改由 user message 按需注入）
+  storyboard_breaker: ['storyboard-breaker', 'shot-styles'],
   prompt_generator: [
     'prompt-generator/character-prompt',
     'prompt-generator/scene-prompt',
@@ -59,6 +61,9 @@ export const AGENT_BASE_SKILLS: Record<string, string[]> = {
 
 /** 视频引擎 skill 相对 workspace 的路径前缀（Skills UI / 按需加载共用） */
 export const VIDEO_ENGINE_SKILL_PREFIX = 'prompt-generator/video-engines'
+
+/** 镜头风格包前缀（拆镜 Agent 可注入；视频提示词由 shot_style 按需读取） */
+export const SHOT_STYLE_SKILL_PREFIX = 'shot-styles'
 
 export type SkillCatalogItem = {
   id: string
@@ -137,14 +142,18 @@ function isVideoEngineSkill(relPath: string): boolean {
   return relPath === VIDEO_ENGINE_SKILL_PREFIX || relPath.startsWith(VIDEO_ENGINE_SKILL_PREFIX + '/')
 }
 
-/** Agent 前缀下全部可发现路径（含 video-engines，供设置页；注入时另滤） */
+export function isShotStyleSkill(relPath: string): boolean {
+  return relPath === SHOT_STYLE_SKILL_PREFIX || relPath.startsWith(SHOT_STYLE_SKILL_PREFIX + '/')
+}
+
+/** Agent 前缀下全部可发现路径（含 video-engines / shot-styles，供设置页；注入时另滤） */
 export function listAgentSkillRelPaths(agentType: string): string[] {
   const prefixes = AGENT_SKILL_MAP[agentType] || []
   if (!prefixes.length) return []
   const allPaths = scanSkillPaths().map(p => p.replace(/^skills\//, ''))
-  // prompt_generator：设置页还需看到 video-engines；catalog 注入侧再排除
+  // prompt_generator：设置页还需看到 video-engines 与 shot-styles；catalog 勾选侧再排除
   const scanPrefixes = agentType === 'prompt_generator'
-    ? [...prefixes, VIDEO_ENGINE_SKILL_PREFIX]
+    ? [...prefixes, VIDEO_ENGINE_SKILL_PREFIX, SHOT_STYLE_SKILL_PREFIX]
     : prefixes
   return allPaths.filter(p =>
     scanPrefixes.some(prefix => p === prefix || p.startsWith(prefix + '/')))
@@ -165,13 +174,15 @@ async function skillMeta(relPath: string): Promise<SkillCatalogItem> {
   }
 }
 
-/** 列出 Agent 的底座 + 可选 Skill（不含 video-engines） */
+/** 列出 Agent 的底座 + 可选 Skill（不含 video-engines；shot-styles 仅在 storyboard_breaker 作为可选） */
 export async function listAgentSkillCatalog(agentType: string): Promise<SkillCatalog> {
   if (!AGENT_SKILL_MAP[agentType]) {
     throw new Error(`Unknown agent type: ${agentType}`)
   }
   const baseIds = new Set(AGENT_BASE_SKILLS[agentType] || [])
-  const all = listAgentSkillRelPaths(agentType).filter(p => !isVideoEngineSkill(p))
+  const all = listAgentSkillRelPaths(agentType).filter(p =>
+    !isVideoEngineSkill(p) && !(agentType === 'prompt_generator' && isShotStyleSkill(p)))
+
 
   // 底座：写死映射里存在的路径（即使暂时没有文件也列出 id）
   const base: SkillCatalogItem[] = []
@@ -245,7 +256,10 @@ export function validateSkillIds(agentType: string, skillIds: string[]): void {
     if (isVideoEngineSkill(id)) {
       throw new Error(`Skill「${id}」由 videoEngine 按需注入，不能通过 skill_selection 勾选`)
     }
-    if (!belongsToAgent(agentType, id)) {
+    if (isShotStyleSkill(id) && agentType === 'prompt_generator') {
+      throw new Error(`Skill「${id}」由分镜 shot_style 按需注入，不能通过 skill_selection 勾选`)
+    }
+    if (!belongsToAgent(agentType, id) && !(agentType === 'storyboard_breaker' && isShotStyleSkill(id))) {
       throw new Error(`Skill「${id}」不属于 Agent ${agentType}`)
     }
     const full = path.join(SKILLS_DIR, ...id.split('/'), 'SKILL.md')

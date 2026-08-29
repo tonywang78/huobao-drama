@@ -258,6 +258,7 @@ export async function buildContextSnapshot(ui: AssistantUiContext | undefined, o
       lines.push(`当前分镜 #${String(sb.storyboardNumber).padStart(2, '0')} id=${sb.id} ${sb.duration || 0}s`)
       if (sb.description) lines.push(`分镜描述：${excerpt(sb.description, 800)}`)
       if (sb.atmosphere) lines.push(`氛围：${sb.atmosphere}`)
+      if (sb.shotStyle) lines.push(`镜头风格：${sb.shotStyle}`)
       if (sb.videoPrompt) lines.push(`视频提示词：${excerpt(sb.videoPrompt, 600)}`)
     }
   }

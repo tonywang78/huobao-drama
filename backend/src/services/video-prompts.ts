@@ -13,6 +13,7 @@ import {
   resolveVideoEngine,
   type VideoEngine,
 } from './video-engine.js'
+import { loadShotStyleSkill, normalizeShotStyle } from './shot-style.js'
 import type { ResolvedSkillSelection } from '../agents/skills.js'
 
 export interface VideoPromptBatchStatus {
@@ -95,6 +96,8 @@ export async function startVideoPromptBatch(
         videoEngine: engine,
       })
       try {
+        const shotStyle = normalizeShotStyle(sb.shotStyle)
+        const styleSkill = await loadShotStyleSkill(shotStyle)
         await agent.generate([{
           role: 'user',
           content: buildVideoPromptUserMessage({
@@ -103,6 +106,8 @@ export async function startVideoPromptBatch(
             configLabel,
             engine,
             engineSkill,
+            shotStyle,
+            styleSkill,
           }),
         }], { maxSteps: 8, requestContext })
         // 以实际落库为准判定成败

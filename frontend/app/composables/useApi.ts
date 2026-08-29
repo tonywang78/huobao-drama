@@ -90,6 +90,8 @@ export const storyboardAPI = {
   create: (data: any) => api.post('/storyboards', data),
   update: (id: number, data: any) => api.put(`/storyboards/${id}`, data),
   del: (id: number) => api.del(`/storyboards/${id}`),
+  applyShotStyle: (id: number, data: { shot_style: string; text_model?: string; text_config_id?: number }) =>
+    api.post(`/storyboards/${id}/apply-shot-style`, data),
 }
 
 export const characterAPI = {

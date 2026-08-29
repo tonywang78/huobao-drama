@@ -234,7 +234,10 @@
                 <p class="settings-desc">
                   Skills 仅作为 Agent 的高级提示词层使用，不影响工作台常规功能入口。
                   <template v-if="selectedAgent === 'prompt_generator'">
-                    「video-engines/*」由视频配置的 videoEngine 按需注入，不会进入角色/场景提示词。
+                    「video-engines/*」由视频配置的 videoEngine 按需注入；「shot-styles/*」由分镜 shot_style 按需注入，都不会进入角色/场景提示词。
+                  </template>
+                  <template v-else-if="selectedAgent === 'storyboard_breaker'">
+                    「shot-styles/*」为镜头戏种包，拆镜时自动注入；改标重写与视频提示词也会读取同一套文件。
                   </template>
                 </p>
               </div>
@@ -324,6 +327,7 @@
                     <div style="font-weight:600;font-size:13px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                       <span>{{ s.name }}</span>
                       <span v-if="isVideoEngineSkill(s.id)" class="tag tag-accent" style="font-size:10px">videoEngine</span>
+                      <span v-if="isShotStyleSkill(s.id)" class="tag tag-accent" style="font-size:10px">shot_style</span>
                     </div>
                     <div class="dim" style="font-size:11px">{{ s.description || s.id }}</div>
                   </div>
@@ -483,10 +487,13 @@
             <input
               v-model="newSkillForm.id"
               class="input"
-              :placeholder="selectedAgent === 'prompt_generator' ? '如 video-engines/my-engine 或 custom-rule' : '如 custom-extraction'"
+              :placeholder="selectedAgent === 'prompt_generator' ? '如 video-engines/my-engine 或 shot-styles/my-style' : selectedAgent === 'storyboard_breaker' ? '如 shot-styles/my-style 或 custom-rule' : '如 custom-extraction'"
             />
             <span v-if="selectedAgent === 'prompt_generator'" class="field-hint">
-              视频引擎规则请用 <code>video-engines/引擎名</code>（目录名须与 frontmatter name 一致）；生成时由配置的 videoEngine 选用。
+              视频引擎规则请用 <code>video-engines/引擎名</code>；镜头风格包请用 <code>shot-styles/风格名</code>（目录名须与 frontmatter name 一致）。
+            </span>
+            <span v-else-if="selectedAgent === 'storyboard_breaker'" class="field-hint">
+              镜头风格包请用 <code>shot-styles/风格名</code>（如 fight / documentary / art-film）。
             </span>
           </label>
           <label class="field">
@@ -1103,15 +1110,22 @@ const selectedAgentType = computed(() => selectedAgent.value)
 const selectedAgentLabel = computed(() => agentDefs.find(a => a.type === selectedAgent.value)?.label || '')
 const selectedAgentIcon = computed(() => agentDefs.find(a => a.type === selectedAgent.value)?.icon || '')
 
+function isVideoEngineSkill(skillId) {
+  return String(skillId || '').startsWith('prompt-generator/video-engines/')
+}
+
+function isShotStyleSkill(skillId) {
+  return String(skillId || '') === 'shot-styles' || String(skillId || '').startsWith('shot-styles/')
+}
+
 // agent type 用下划线（script_rewriter），skill 目录按 Mastra 规范用连字符（script-rewriter）
 const skillDirOf = (type) => type.replace(/_/g, '-')
 const skillBelongsTo = (skillId, type) => {
   const dir = skillDirOf(type)
-  return skillId === dir || skillId.startsWith(dir + '/')
-}
-
-function isVideoEngineSkill(skillId) {
-  return String(skillId || '').startsWith('prompt-generator/video-engines/')
+  if (skillId === dir || skillId.startsWith(dir + '/')) return true
+  // shot-styles：拆镜 Agent 注入；提示词 Agent 按需读取，设置页两边都可编辑
+  if (isShotStyleSkill(skillId) && (type === 'storyboard_breaker' || type === 'prompt_generator')) return true
+  return false
 }
 
 function agentSkillCount(type) {
@@ -1123,9 +1137,9 @@ const currentSkills = computed(() =>
     .filter(s => skillBelongsTo(s.id, selectedAgent.value))
     .slice()
     .sort((a, b) => {
-      const ae = isVideoEngineSkill(a.id) ? 1 : 0
-      const be = isVideoEngineSkill(b.id) ? 1 : 0
-      if (ae !== be) return ae - be
+      const rank = (id) => (isVideoEngineSkill(id) ? 2 : isShotStyleSkill(id) ? 1 : 0)
+      const d = rank(a.id) - rank(b.id)
+      if (d) return d
       return String(a.id).localeCompare(String(b.id))
     }),
 )
@@ -1161,7 +1175,7 @@ const AGENT_BASE_IDS = {
 
 const optionalSkillsForAgent = computed(() => {
   const base = new Set(AGENT_BASE_IDS[selectedAgent.value] || [])
-  return currentSkills.value.filter(s => !base.has(s.id) && !isVideoEngineSkill(s.id))
+  return currentSkills.value.filter(s => !base.has(s.id) && !isVideoEngineSkill(s.id) && !(selectedAgent.value === 'prompt_generator' && isShotStyleSkill(s.id)))
 })
 
 async function loadAgentProfiles() {
@@ -1273,7 +1287,11 @@ function startAddSkill() {
 
 async function confirmAddSkill() {
   if (!newSkillForm.id) return
-  const skillId = `${skillDirOf(selectedAgent.value)}/${newSkillForm.id}`
+  const raw = String(newSkillForm.id).trim().replace(/^\/+/, '')
+  // shot-styles 位于 skills 根下，不挂在 agent 目录前缀内
+  const skillId = raw.startsWith('shot-styles/')
+    ? raw
+    : `${skillDirOf(selectedAgent.value)}/${raw}`
   try {
     await skillsAPI.create({ id: skillId, name: newSkillForm.name, description: newSkillForm.description })
     addSkillDialog.value = false

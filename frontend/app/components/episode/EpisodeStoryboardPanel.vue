@@ -77,6 +77,7 @@ const shotPromptSkill = ref(null)
                       </span>
                       <div class="shot-num">#{{ String(i + 1).padStart(2, '0') }}</div>
                       <span class="storyboard-shot-chip">{{ sb.duration || 10 }}s</span>
+                      <span v-if="wb.shotStyleOf(sb) !== 'default'" class="storyboard-shot-chip shot-style-chip">{{ wb.shotStyleLabel(wb.shotStyleOf(sb)) }}</span>
                       <span v-if="wb.getSceneName(sb)" class="shot-location"><MapPin :size="9" />{{ wb.getSceneName(sb) }}</span>
                       <span v-if="wb.isPendingVideo(sb.id)" class="shot-chip-generating" :title="wb.hasVid(sb) ? '正在重新生成视频' : '正在生成视频'">
                         <Loader2 :size="8" class="animate-spin" />{{ wb.hasVid(sb) ? '重新生成中' : '生成中' }}
@@ -206,6 +207,27 @@ const shotPromptSkill = ref(null)
                     <span class="sb-duration-unit">s</span>
                   </span>
                   <span class="sb-prop-sep" />
+                  <span class="sb-shot-style-field">
+                    <span class="sb-field-label">镜头风格</span>
+                    <select
+                      class="input sb-shot-style-select"
+                      :value="wb.shotStyleOf(wb.selectedSb)"
+                      @change="wb.changeShotStyle(wb.selectedSb, $event.target.value)"
+                    >
+                      <option v-for="opt in wb.SHOT_STYLE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                    </select>
+                    <button
+                      type="button"
+                      class="btn btn-sm"
+                      :disabled="wb.rewritingShotStyleIds.includes(wb.selectedSb?.id)"
+                      title="按当前镜头风格重写分镜描述"
+                      @click="wb.rewriteShotStyleDescription(wb.selectedSb)"
+                    >
+                      <Loader2 v-if="wb.rewritingShotStyleIds.includes(wb.selectedSb?.id)" :size="11" class="animate-spin" />
+                      {{ wb.rewritingShotStyleIds.includes(wb.selectedSb?.id) ? '重写中' : '按风格重写' }}
+                    </button>
+                  </span>
+                  <span class="sb-prop-sep" />
                   <span class="sb-field-label" title="镜头起止画面，参考出片和首尾帧出片都可复用">镜头帧</span>
                   <span class="sb-prop-hint dim">{{ wb.framesReadyCount(wb.selectedSb) }}/2</span>
                   <div class="sb-prop-thumbs">
@@ -255,8 +277,8 @@ const shotPromptSkill = ref(null)
                         <span class="detail-section-title">分镜描述</span>
                       </div>
                       <label class="field">
-                        <span class="field-label">画面描述 <span class="dim">(按【镜头1】【镜头2】…逐子镜头描述；台词写「角色名说：「台词」」，旁白写「旁白：内容」)</span></span>
-                        <textarea :value="wb.selectedSb.description || ''" class="textarea" rows="8" @blur="wb.updateField(wb.selectedSb, 'description', $event.target.value)" placeholder="分镜画面描述" />
+                        <span class="field-label">画面描述 <span class="dim">(每个【镜头N】单独一行；台词写「角色名说：「台词」」，旁白写「旁白：内容」)</span></span>
+                        <textarea :value="wb.selectedSb.description || ''" class="textarea" rows="8" @blur="wb.updateField(wb.selectedSb, 'description', $event.target.value)" placeholder="【镜头1】……&#10;&#10;【镜头2】……" />
                       </label>
                       <label class="field">
                         <span class="field-label">氛围</span>

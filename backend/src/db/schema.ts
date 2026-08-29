@@ -118,6 +118,7 @@ export const storyboards = mysqlTable('storyboards', {
   movement: text('movement'),
   result: text('result'),
   atmosphere: text('atmosphere'),
+  shotStyle: varchar('shot_style', { length: 32 }).default('default'),
   imagePrompt: text('image_prompt'),
   videoPrompt: text('video_prompt'),
   firstLastPrompt: text('first_last_prompt'),
