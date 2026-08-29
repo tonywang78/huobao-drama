@@ -204,6 +204,7 @@ function preselectedAssetLabel() {
           :show-config="a.textModelMultiCfg"
           @update:model-value="a.setChatModel"
         />
+        <AgentSkillPicker agent-type="studio_assistant" />
         <button
           type="button"
           class="assistant-thinking-toggle"
@@ -341,6 +342,12 @@ function preselectedAssetLabel() {
             <div v-if="msg.content.proposal" class="assistant-confirm">
               <div class="assistant-confirm-title">确认执行：{{ ACTION_LABEL[msg.content.proposal.action] || msg.content.proposal.action }}</div>
               <div class="assistant-confirm-warn">{{ msg.content.proposal.warning }}</div>
+              <AgentSkillPicker
+                :agent-type="msg.content.proposal.action === 'extractor' ? 'extractor'
+                  : msg.content.proposal.action === 'storyboard_breaker' ? 'storyboard_breaker'
+                    : msg.content.proposal.action === 'video_prompts' ? 'prompt_generator'
+                      : 'script_rewriter'"
+              />
               <div class="assistant-confirm-actions">
                 <button class="btn" type="button" @click="a.dismissProposal(msg)">取消</button>
                 <button class="btn btn-primary" type="button" :disabled="a.confirming" @click="a.confirmProposal(msg)">

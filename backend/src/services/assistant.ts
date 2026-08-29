@@ -11,9 +11,6 @@ import { startVideoPromptBatch } from './video-prompts.js'
 import { getDramaStylePrompt } from './style-preset.js'
 import { generateImageEdit } from './generation.js'
 import { logTaskProgress } from '../utils/task-logger.js'
-
-import { generateImageEdit } from './generation.js'
-import { logTaskProgress } from '../utils/task-logger.js'
 import {
   looksLikeFieldEditIntent,
   looksLikeImageEditIntent,
@@ -976,17 +973,19 @@ export async function runPipelineAction(opts: {
   episodeId: number
   model?: string
   configId?: number
+  skillSelection?: import('../agents/skills.js').ResolvedSkillSelection | null
 }) {
-  const { action, dramaId, episodeId, model, configId } = opts
+  const { action, dramaId, episodeId, model, configId, skillSelection } = opts
   const requestContext = buildAgentRequestContext({
     episodeId,
     dramaId,
     modelOverride: model,
     textConfigId: configId,
+    skillSelection: skillSelection || undefined,
   })
 
   if (action === 'video_prompts') {
-    const result = await startVideoPromptBatch(episodeId, dramaId, { model, configId })
+    const result = await startVideoPromptBatch(episodeId, dramaId, { model, configId, skillSelection })
     return { ok: true, action, async: true, total: result.total, started: result.started, already_running: result.total === -1 }
   }
 

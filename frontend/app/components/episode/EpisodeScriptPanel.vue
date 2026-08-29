@@ -41,6 +41,7 @@ const wb = useEpisodeWorkbenchInject()
             </div>
             <div class="toolbar-right">
               <span v-if="wb.scriptLen" class="char-count">{{ wb.scriptLen }} 字</span>
+              <AgentSkillPicker agent-type="script_rewriter" />
               <button v-if="wb.rawContent" class="btn btn-sm" @click="wb.skipRewrite">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/><path d="M13 18l6-6-6-6"/></svg>
                 跳过改写
@@ -62,6 +63,7 @@ const wb = useEpisodeWorkbenchInject()
             <div class="empty-title">AI 改写为格式化剧本</div>
             <div class="empty-desc">你可以先用 AI 把原始内容整理成格式化剧本，也可以跳过这一步，直接进入资产制作。</div>
             <div class="step-empty-actions">
+              <AgentSkillPicker agent-type="script_rewriter" />
               <button class="btn btn-primary" @click="wb.doRewrite">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
                 开始改写

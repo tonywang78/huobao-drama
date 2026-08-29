@@ -15,6 +15,7 @@ import { getActiveConfigId } from '../services/ai.js'
 import { EXTRACT_TARGETS, getExtractionStatus, startExtraction, type ExtractTarget } from '../services/extraction.js'
 import { getVideoPromptBatchStatus, startVideoPromptBatch } from '../services/video-prompts.js'
 import { confirmStoryboardImport, parseStoryboardImport } from '../services/storyboard-import.js'
+import { parseRawSkillSelection, resolveSkillSelection } from '../agents/skills.js'
 
 const app = new Hono()
 
@@ -294,7 +295,17 @@ app.post('/:id/extract', async (c) => {
   if (!EXTRACT_TARGETS.includes(target)) return badRequest(c, 'target 必须是 characters / scenes / props')
   const [ep] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, id))
   if (!ep) return notFound(c, '剧集不存在')
-  const started = startExtraction(ep.id, ep.dramaId, target, { model: body.model || undefined, configId: body.config_id ?? undefined })
+  let skillSelection
+  try {
+    skillSelection = resolveSkillSelection('extractor', parseRawSkillSelection(body))
+  } catch (err: any) {
+    return badRequest(c, err.message || 'Invalid skill_selection')
+  }
+  const started = startExtraction(ep.id, ep.dramaId, target, {
+    model: body.model || undefined,
+    configId: body.config_id ?? undefined,
+    skillSelection,
+  })
   return success(c, { target, status: 'running', already_running: !started })
 })
 
@@ -313,7 +324,18 @@ app.post('/:id/generate-video-prompts', async (c) => {
   const storyboardIds = Array.isArray(body.storyboard_ids)
     ? body.storyboard_ids.map(Number).filter((n: number) => Number.isInteger(n) && n > 0)
     : undefined
-  const result = await startVideoPromptBatch(ep.id, ep.dramaId, { model: body.model || undefined, configId: body.config_id ?? undefined }, storyboardIds)
+  let skillSelection
+  try {
+    skillSelection = resolveSkillSelection('prompt_generator', parseRawSkillSelection(body))
+  } catch (err: any) {
+    return badRequest(c, err.message || 'Invalid skill_selection')
+  }
+  const result = await startVideoPromptBatch(
+    ep.id,
+    ep.dramaId,
+    { model: body.model || undefined, configId: body.config_id ?? undefined, skillSelection },
+    storyboardIds,
+  )
   if (result.total === -1) return success(c, { status: 'running', already_running: true })
   if (!result.started) return success(c, { status: 'idle', total: 0 })
   return success(c, { status: 'running', total: result.total })
@@ -336,10 +358,17 @@ app.post('/:id/storyboards/import/parse', async (c) => {
   if (!String(content).trim()) return badRequest(c, 'content required')
 
   try {
+    let skillSelection
+    try {
+      skillSelection = resolveSkillSelection('storyboard_importer', parseRawSkillSelection(body))
+    } catch (err: any) {
+      return badRequest(c, err.message || 'Invalid skill_selection')
+    }
     const candidates = await parseStoryboardImport(episodeId, ep.dramaId, String(content), {
       filename: body.filename || undefined,
       model: body.model || undefined,
       configId: body.config_id ?? undefined,
+      skillSelection,
     })
     return success(c, { candidates })
   } catch (err: any) {

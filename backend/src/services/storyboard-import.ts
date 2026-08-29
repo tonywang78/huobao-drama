@@ -4,6 +4,7 @@
 import { eq } from 'drizzle-orm'
 import { mastra } from '../mastra/index.js'
 import { buildAgentRequestContext } from '../agents/context.js'
+import type { ResolvedSkillSelection } from '../agents/skills.js'
 import type { StoryboardImportCandidate } from '../agents/tools/storyboard-import-tools.js'
 import { db, getInsertId, schema } from '../db/index.js'
 import { now } from '../utils/response.js'
@@ -13,7 +14,7 @@ export async function parseStoryboardImport(
   episodeId: number,
   dramaId: number,
   content: string,
-  opts: { filename?: string; model?: string; configId?: number } = {},
+  opts: { filename?: string; model?: string; configId?: number; skillSelection?: ResolvedSkillSelection | null } = {},
 ): Promise<StoryboardImportCandidate[]> {
   const text = (content || '').trim()
   if (!text) throw new Error('文件内容为空')
@@ -35,6 +36,7 @@ export async function parseStoryboardImport(
     modelOverride: opts.model,
     textConfigId: opts.configId,
     storyboardImportBuffer: buffer,
+    skillSelection: opts.skillSelection || undefined,
   })
 
   const userMessage = [

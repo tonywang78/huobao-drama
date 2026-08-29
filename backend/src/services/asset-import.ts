@@ -4,6 +4,7 @@
 import { eq } from 'drizzle-orm'
 import { mastra } from '../mastra/index.js'
 import { buildAgentRequestContext } from '../agents/context.js'
+import type { ResolvedSkillSelection } from '../agents/skills.js'
 import type { ImportCandidate } from '../agents/tools/import-tools.js'
 import { db, getInsertId, schema } from '../db/index.js'
 import { linkCharToEpisode, linkPropToEpisode, linkSceneToEpisode } from '../utils/episode-assets.js'
@@ -26,7 +27,7 @@ function normalizeLocation(loc: string): string {
 export async function parseAssetImport(
   dramaId: number,
   content: string,
-  opts: { filename?: string; model?: string; configId?: number; episodeId?: number } = {},
+  opts: { filename?: string; model?: string; configId?: number; episodeId?: number; skillSelection?: ResolvedSkillSelection | null } = {},
 ): Promise<ImportCandidate[]> {
   const text = (content || '').trim()
   if (!text) throw new Error('文件内容为空')
@@ -48,6 +49,7 @@ export async function parseAssetImport(
     modelOverride: opts.model,
     textConfigId: opts.configId,
     importCandidateBuffer: buffer,
+    skillSelection: opts.skillSelection || undefined,
   })
 
   const userMessage = [

@@ -10,6 +10,7 @@ import { eq } from 'drizzle-orm'
 import { db, schema } from '../db/index.js'
 import { mastra } from '../mastra/index.js'
 import { buildAgentRequestContext } from '../agents/context.js'
+import type { ResolvedSkillSelection } from '../agents/skills.js'
 import { logTaskError, logTaskProgress } from '../utils/task-logger.js'
 
 type CharacterRow = typeof schema.characters.$inferSelect
@@ -17,7 +18,11 @@ type SceneRow = typeof schema.scenes.$inferSelect
 type PropRow = typeof schema.props.$inferSelect
 
 /** 顶栏选择的文本模型/配置覆盖（不传则跟随 Agent 与文本配置默认） */
-export interface PromptAgentOptions { model?: string; configId?: number }
+export interface PromptAgentOptions {
+  model?: string
+  configId?: number
+  skillSelection?: ResolvedSkillSelection | null
+}
 
 async function runPromptAgent(episodeId: number, dramaId: number, message: string, opts?: PromptAgentOptions) {
   const agent = mastra.getAgent('prompt_generator')
@@ -27,6 +32,7 @@ async function runPromptAgent(episodeId: number, dramaId: number, message: strin
     dramaId,
     modelOverride: opts?.model || undefined,
     textConfigId: opts?.configId || undefined,
+    skillSelection: opts?.skillSelection || undefined,
   })
   await agent.generate([{ role: 'user', content: message }], { maxSteps: 12, requestContext })
 }

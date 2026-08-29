@@ -8,6 +8,7 @@ import { db, schema } from '../db/index.js'
 import { success, badRequest, notFound } from '../utils/response.js'
 import { mastra } from '../mastra/index.js'
 import { buildAgentRequestContext, type AssistantUiContext } from '../agents/context.js'
+import { parseRawSkillSelection, resolveSkillSelection } from '../agents/skills.js'
 import {
   appendMessage,
   buildContextSnapshot,
@@ -202,6 +203,13 @@ app.post('/chat', async (c) => {
 
   const enableThinking = body.enable_thinking === true || body.enableThinking === true
 
+  let skillSelection
+  try {
+    skillSelection = resolveSkillSelection('studio_assistant', parseRawSkillSelection(body))
+  } catch (err: any) {
+    return badRequest(c, err.message || 'Invalid skill_selection')
+  }
+
   const requestContext = buildAgentRequestContext({
     episodeId: episodeId || 0,
     dramaId: dramaId || 0,
@@ -214,6 +222,7 @@ app.post('/chat', async (c) => {
     uiContext: { ...ui, drama_id: dramaId, episode_id: episodeId },
     assistantRefs: refs,
     assistantAttachments: attachments,
+    skillSelection: skillSelection || undefined,
   })
 
   const messages = await toModelMessages(
@@ -407,12 +416,23 @@ app.post('/confirm', async (c) => {
 
   logTaskStart('Assistant', 'confirm', { action, episodeId: thread.episodeId })
   try {
+    let skillSelection
+    try {
+      const agentType = action === 'extractor' ? 'extractor'
+        : action === 'storyboard_breaker' ? 'storyboard_breaker'
+          : action === 'video_prompts' ? 'prompt_generator'
+            : 'script_rewriter'
+      skillSelection = resolveSkillSelection(agentType, parseRawSkillSelection(body))
+    } catch (err: any) {
+      return badRequest(c, err.message || 'Invalid skill_selection')
+    }
     const result = await runPipelineAction({
       action,
       dramaId: thread.dramaId,
       episodeId: thread.episodeId,
       model: body.model || undefined,
       configId: body.config_id || undefined,
+      skillSelection,
     })
     const follow = result.async
       ? (result.already_running

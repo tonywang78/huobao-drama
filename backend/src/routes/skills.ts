@@ -4,7 +4,12 @@
  */
 import { Hono } from 'hono'
 import { success, badRequest } from '../utils/response.js'
-import { refreshSkillWorkspaces, skillsManagerWorkspace } from '../agents/skills.js'
+import {
+  listAgentSkillCatalog,
+  refreshSkillWorkspaces,
+  skillsManagerWorkspace,
+  AGENT_BASE_SKILLS,
+} from '../agents/skills.js'
 
 const app = new Hono()
 const fsm = () => skillsManagerWorkspace.filesystem!
@@ -21,9 +26,22 @@ app.get('/', async (c) => {
   })))
 })
 
+// GET /skills/catalog/:agentType — 底座 + 可选 Skill
+app.get('/catalog/:agentType', async (c) => {
+  try {
+    const agentType = c.req.param('agentType')
+    if (!AGENT_BASE_SKILLS[agentType]) return badRequest(c, `Unknown agent type: ${agentType}`)
+    const catalog = await listAgentSkillCatalog(agentType)
+    return success(c, catalog)
+  } catch (err: any) {
+    return badRequest(c, err.message || 'Failed to load catalog')
+  }
+})
+
 // GET /skills/:id — Get skill content (raw, 含 frontmatter 供编辑)
 app.get('/*', async (c) => {
   const id = c.req.path.slice('/api/v1/skills/'.length)
+  if (id.startsWith('catalog/')) return badRequest(c, 'Not found')
   if (!await fsm().exists(skillFile(id))) return badRequest(c, 'Skill not found')
   const content = await fsm().readFile(skillFile(id), { encoding: 'utf-8' })
   return success(c, { id, content })
@@ -34,7 +52,6 @@ app.put('/*', async (c) => {
   const id = c.req.path.slice('/api/v1/skills/'.length)
   const body = await c.req.json()
   await fsm().writeFile(skillFile(id), body.content, { recursive: true })
-  // 目录 mtime 不会因文件内容编辑而更新（APFS），显式刷新技能缓存
   await refreshSkillWorkspaces()
   return success(c)
 })
@@ -44,7 +61,6 @@ app.post('/', async (c) => {
   const body = await c.req.json()
   const { id, description } = body
   if (!id) return badRequest(c, 'Skill id is required')
-  // Mastra 技能规范：frontmatter name 必须与目录名一致，且只允许小写字母/数字/连字符
   const segments = String(id).split('/')
   if (!segments.every((seg: string) => SKILL_ID_SEGMENT.test(seg))) {
     return badRequest(c, 'Skill id 每段只能包含小写字母、数字和连字符')

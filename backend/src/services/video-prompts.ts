@@ -13,6 +13,7 @@ import {
   resolveVideoEngine,
   type VideoEngine,
 } from './video-engine.js'
+import type { ResolvedSkillSelection } from '../agents/skills.js'
 
 export interface VideoPromptBatchStatus {
   status: 'running' | 'done' | 'error'
@@ -32,7 +33,7 @@ const tasks = new Map<number, VideoPromptBatchStatus>()
 export async function startVideoPromptBatch(
   episodeId: number,
   dramaId: number,
-  opts: { model?: string; configId?: number } = {},
+  opts: { model?: string; configId?: number; skillSelection?: ResolvedSkillSelection | null } = {},
   storyboardIds?: number[],
 ): Promise<{ started: boolean; total: number }> {
   if (tasks.get(episodeId)?.status === 'running') return { started: false, total: -1 }
@@ -82,6 +83,7 @@ export async function startVideoPromptBatch(
       dramaId,
       modelOverride: opts.model || undefined,
       textConfigId: opts.configId || undefined,
+      skillSelection: opts.skillSelection || undefined,
     })
     for (const sb of pending) {
       task.current_storyboard_id = sb.id

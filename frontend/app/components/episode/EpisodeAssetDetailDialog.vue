@@ -204,6 +204,7 @@ watch(
               <div class="asset-detail-section-title">
                 <span>{{ wb.assetDetail.type === 'character' ? '最终提示词 · 三视图' : wb.assetDetail.type === 'scene' ? '最终提示词 · 固定视角' : '最终提示词 · 白底单品' }}</span>
                 <div class="asset-detail-prompt-head-actions">
+                  <AgentSkillPicker agent-type="prompt_generator" />
                   <button
                     class="btn btn-sm"
                     :disabled="wb.isGeneratingPrompt(wb.assetDetail.type, wb.assetDetail.item.id) || wb.isAssetImagePending(wb.assetDetail.type, wb.assetDetail.item.id)"

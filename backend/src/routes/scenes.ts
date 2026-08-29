@@ -5,6 +5,7 @@ import { success, created, badRequest, notFound, now } from '../utils/response.j
 import { generateImage, generateImageEdit } from '../services/generation.js'
 import { getDramaStylePrompt } from '../services/style-preset.js'
 import { ensureSceneFinalPrompt } from '../services/final-prompt.js'
+import { parseRawSkillSelection, resolveSkillSelection } from '../agents/skills.js'
 import { hardDeleteScene } from '../utils/asset-hard-delete.js'
 import { duplicateScene } from '../utils/asset-duplicate.js'
 import { logTaskError, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
@@ -163,7 +164,17 @@ app.post('/:id/generate-prompt', async (c) => {
   if (!ep) return badRequest(c, 'Episode not found')
 
   logTaskStart('FinalPrompt', 'scene-generate', { sceneId: id, episodeId: ep.id, force: !!body.force })
-  const finalPrompt = await ensureSceneFinalPrompt(scene, ep.id, !!body.force, { model: body.text_model, configId: body.text_config_id ?? undefined })
+  let skillSelection
+  try {
+    skillSelection = resolveSkillSelection('prompt_generator', parseRawSkillSelection(body))
+  } catch (err: any) {
+    return badRequest(c, err.message || 'Invalid skill_selection')
+  }
+  const finalPrompt = await ensureSceneFinalPrompt(scene, ep.id, !!body.force, {
+    model: body.text_model,
+    configId: body.text_config_id ?? undefined,
+    skillSelection,
+  })
   if (!finalPrompt) {
     logTaskError('FinalPrompt', 'scene-generate', { sceneId: id, error: 'agent returned empty prompt' })
     return badRequest(c, '最终提示词生成失败，请重试')

@@ -41,7 +41,7 @@ export const dramaAPI = {
   create: (data: any) => api.post('/dramas', data),
   update: (id: number, data: any) => api.put(`/dramas/${id}`, data),
   del: (id: number) => api.del(`/dramas/${id}`),
-  importAssetsParse: (id: number, data: { content: string; filename?: string; episode_id?: number; model?: string; config_id?: number }) =>
+  importAssetsParse: (id: number, data: { content: string; filename?: string; episode_id?: number; model?: string; config_id?: number; skill_selection?: any }) =>
     api.post(`/dramas/${id}/assets/import/parse`, data),
   importAssetsConfirm: (id: number, data: { items: any[]; episode_id?: number }) =>
     api.post(`/dramas/${id}/assets/import/confirm`, data),
@@ -64,11 +64,23 @@ export const episodeAPI = {
   unlinkProp: (episodeId: number, propId: number) => api.del(`/episodes/${episodeId}/props/${propId}`),
   storyboards: (id: number) => api.get(`/episodes/${id}/storyboards`),
   pipelineStatus: (id: number) => api.get(`/episodes/${id}/pipeline-status`),
-  extract: (id: number, target: string, model?: string, configId?: number) => api.post(`/episodes/${id}/extract`, { target, model: model || undefined, config_id: configId || undefined }),
+  extract: (id: number, target: string, model?: string, configId?: number, skillSelection?: any) =>
+    api.post(`/episodes/${id}/extract`, {
+      target,
+      model: model || undefined,
+      config_id: configId || undefined,
+      skill_selection: skillSelection,
+    }),
   extractStatus: (id: number) => api.get(`/episodes/${id}/extract-status`),
-  generateVideoPrompts: (id: number, model?: string, configId?: number, storyboardIds?: number[]) => api.post(`/episodes/${id}/generate-video-prompts`, { model: model || undefined, config_id: configId || undefined, storyboard_ids: storyboardIds?.length ? storyboardIds : undefined }),
+  generateVideoPrompts: (id: number, model?: string, configId?: number, storyboardIds?: number[], skillSelection?: any) =>
+    api.post(`/episodes/${id}/generate-video-prompts`, {
+      model: model || undefined,
+      config_id: configId || undefined,
+      storyboard_ids: storyboardIds?.length ? storyboardIds : undefined,
+      skill_selection: skillSelection,
+    }),
   videoPromptsStatus: (id: number) => api.get(`/episodes/${id}/video-prompts-status`),
-  importStoryboardsParse: (id: number, data: { content: string; filename?: string; model?: string; config_id?: number }) =>
+  importStoryboardsParse: (id: number, data: { content: string; filename?: string; model?: string; config_id?: number; skill_selection?: any }) =>
     api.post(`/episodes/${id}/storyboards/import/parse`, data),
   importStoryboardsConfirm: (id: number, data: { items: any[]; mode: 'replace' | 'append' }) =>
     api.post(`/episodes/${id}/storyboards/import/confirm`, data),
@@ -85,7 +97,14 @@ export const characterAPI = {
   update: (id: number, data: any) => api.put(`/characters/${id}`, data),
   del: (id: number) => api.del(`/characters/${id}`),
   duplicate: (id: number, data?: { episode_id?: number }) => api.post(`/characters/${id}/duplicate`, data || {}),
-  generatePrompt: (id: number, episodeId: number, force = false, textModel?: string, textConfigId?: number) => api.post(`/characters/${id}/generate-prompt`, { episode_id: episodeId, force, text_model: textModel || undefined, text_config_id: textConfigId || undefined }),
+  generatePrompt: (id: number, episodeId: number, force = false, textModel?: string, textConfigId?: number, skillSelection?: any) =>
+    api.post(`/characters/${id}/generate-prompt`, {
+      episode_id: episodeId,
+      force,
+      text_model: textModel || undefined,
+      text_config_id: textConfigId || undefined,
+      skill_selection: skillSelection,
+    }),
   generateImage: (id: number, episodeId: number, model?: string, configId?: number, textModel?: string, textConfigId?: number) => api.post(`/characters/${id}/generate-image`, { episode_id: episodeId, model: model || undefined, config_id: configId || undefined, text_model: textModel || undefined, text_config_id: textConfigId || undefined }),
   editImage: (id: number, episodeId: number, editPrompt: string, configId?: number, model?: string) => api.post(`/characters/${id}/edit-image`, { episode_id: episodeId, edit_prompt: editPrompt, config_id: configId || undefined, model: model || undefined }),
   batchImages: (ids: number[], episodeId: number, model?: string, configId?: number, textModel?: string, textConfigId?: number) => api.post('/characters/batch-generate-images', { character_ids: ids, episode_id: episodeId, model: model || undefined, config_id: configId || undefined, text_model: textModel || undefined, text_config_id: textConfigId || undefined }),
@@ -96,7 +115,14 @@ export const sceneAPI = {
   update: (id: number, data: any) => api.put(`/scenes/${id}`, data),
   del: (id: number) => api.del(`/scenes/${id}`),
   duplicate: (id: number, data?: { episode_id?: number }) => api.post(`/scenes/${id}/duplicate`, data || {}),
-  generatePrompt: (id: number, episodeId: number, force = false, textModel?: string, textConfigId?: number) => api.post(`/scenes/${id}/generate-prompt`, { episode_id: episodeId, force, text_model: textModel || undefined, text_config_id: textConfigId || undefined }),
+  generatePrompt: (id: number, episodeId: number, force = false, textModel?: string, textConfigId?: number, skillSelection?: any) =>
+    api.post(`/scenes/${id}/generate-prompt`, {
+      episode_id: episodeId,
+      force,
+      text_model: textModel || undefined,
+      text_config_id: textConfigId || undefined,
+      skill_selection: skillSelection,
+    }),
   generateImage: (id: number, episodeId: number, model?: string, configId?: number, textModel?: string, textConfigId?: number) => api.post(`/scenes/${id}/generate-image`, { episode_id: episodeId, model: model || undefined, config_id: configId || undefined, text_model: textModel || undefined, text_config_id: textConfigId || undefined }),
   editImage: (id: number, episodeId: number, editPrompt: string, configId?: number, model?: string) => api.post(`/scenes/${id}/edit-image`, { episode_id: episodeId, edit_prompt: editPrompt, config_id: configId || undefined, model: model || undefined }),
 }
@@ -106,7 +132,14 @@ export const propAPI = {
   update: (id: number, data: any) => api.put(`/props/${id}`, data),
   del: (id: number) => api.del(`/props/${id}`),
   duplicate: (id: number, data?: { episode_id?: number }) => api.post(`/props/${id}/duplicate`, data || {}),
-  generatePrompt: (id: number, episodeId: number, force = false, textModel?: string, textConfigId?: number) => api.post(`/props/${id}/generate-prompt`, { episode_id: episodeId, force, text_model: textModel || undefined, text_config_id: textConfigId || undefined }),
+  generatePrompt: (id: number, episodeId: number, force = false, textModel?: string, textConfigId?: number, skillSelection?: any) =>
+    api.post(`/props/${id}/generate-prompt`, {
+      episode_id: episodeId,
+      force,
+      text_model: textModel || undefined,
+      text_config_id: textConfigId || undefined,
+      skill_selection: skillSelection,
+    }),
   generateImage: (id: number, episodeId: number, model?: string, configId?: number, textModel?: string, textConfigId?: number) => api.post(`/props/${id}/generate-image`, { episode_id: episodeId, model: model || undefined, config_id: configId || undefined, text_model: textModel || undefined, text_config_id: textConfigId || undefined }),
 }
 
@@ -179,10 +212,20 @@ export const promptAPI = {
 
 export const skillsAPI = {
   list: () => api.get('/skills'),
+  catalog: (agentType: string) => api.get(`/skills/catalog/${agentType}`),
   get: (id: string) => api.get(`/skills/${id}`),
   create: (data: { id: string; name: string; description?: string }) => api.post('/skills', data),
   update: (id: string, content: string) => api.put(`/skills/${id}`, { content }),
   del: (id: string) => api.del(`/skills/${id}`),
+}
+
+export const skillProfilesAPI = {
+  list: (agentType: string) => api.get(`/skill-profiles/${agentType}`),
+  create: (agentType: string, data: { id: string; name: string; description?: string; include_base?: boolean; skill_ids?: string[] }) =>
+    api.post(`/skill-profiles/${agentType}`, data),
+  update: (agentType: string, id: string, data: { name?: string; description?: string; include_base?: boolean; skill_ids?: string[] }) =>
+    api.put(`/skill-profiles/${agentType}/${id}`, data),
+  del: (agentType: string, id: string) => api.del(`/skill-profiles/${agentType}/${id}`),
 }
 
 export const stylePresetAPI = {
@@ -206,7 +249,7 @@ export const assistantAPI = {
     return api.del<{ ok: boolean; thread: any }>(`/assistant/thread${q.size ? `?${q}` : ''}`)
   },
   updateMessage: (id: number, data: { artifacts?: any[] }) => api.put(`/assistant/messages/${id}`, data),
-  confirm: (data: { thread_id: number; message_id: number; model?: string; config_id?: number }) =>
+  confirm: (data: { thread_id: number; message_id: number; model?: string; config_id?: number; skill_selection?: any }) =>
     api.post('/assistant/confirm', data),
   listSnippets: (drama_id?: number | null) => {
     const q = drama_id ? `?drama_id=${drama_id}` : ''

@@ -1156,6 +1156,14 @@
 /* Production content */
 .prod-content { flex: 1; overflow-y: auto; padding: 10px 12px 64px; display: flex; flex-direction: column; gap: 10px; }
 .prod-section-bar { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.asp-action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--border, #e5e7eb) 55%, transparent);
+}
 
 /* 璧勪骇鏍忓姩浣滐細鎵归噺鐢熸垚鍥剧墖 */
 .asset-bar-actions { align-items: center; }

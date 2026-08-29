@@ -1,6 +1,7 @@
 import { computed, onMounted, reactive, toValue, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { assistantAPI, aiConfigAPI, characterAPI, sceneAPI, propAPI, taskAPI, uploadAPI } from '~/composables/useApi'
+import { readSkillSelectionPayload } from '~/composables/useAgent'
 import { useEpisodeWorkbenchOptional } from '~/composables/useEpisodeWorkbenchInject'
 
 const OPEN_KEY = 'huobao:assistant:open'
@@ -715,6 +716,7 @@ export function useStudioAssistant() {
           image_model: wb ? bareModelName(wb.imageModel) || undefined : undefined,
           image_config_id: ep.image_config_id || ep.imageConfigId || undefined,
           img2img_config_id: ep.img2img_config_id || ep.img2imgConfigId || undefined,
+          skill_selection: readSkillSelectionPayload('studio_assistant'),
         }),
       })
       if (!resp.ok) {
@@ -844,11 +846,17 @@ export function useStudioAssistant() {
     if (!thread.value?.id || confirming.value) return
     confirming.value = true
     try {
+      const action = msg.content?.proposal?.action
+      const agentType = action === 'extractor' ? 'extractor'
+        : action === 'storyboard_breaker' ? 'storyboard_breaker'
+          : action === 'video_prompts' ? 'prompt_generator'
+            : 'script_rewriter'
       const data = await assistantAPI.confirm({
         thread_id: thread.value.id,
         message_id: msg.id,
         model: bareModelName(chatModel.value) || undefined,
         config_id: ownerConfigId(textModelOptions.value, chatModel.value),
+        skill_selection: readSkillSelectionPayload(agentType),
       })
       messages.value.push({
         id: data.message_id || Date.now(),

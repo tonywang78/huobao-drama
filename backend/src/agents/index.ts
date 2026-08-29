@@ -19,6 +19,7 @@ import { storyboardImportTools } from './tools/storyboard-import-tools.js'
 import { assistantTools } from './tools/assistant-tools.js'
 import { loadAgentSkills, skillWorkspaces } from './skills.js'
 import { loadAgentPromptFile } from './prompts.js'
+import { getSkillSelection } from './context.js'
 
 // Default prompts (used when workspace/prompts/<type>.md 文件缺失时兜底)
 export const DEFAULT_PROMPTS: Record<string, { name: string; instructions: string }> = {
@@ -364,13 +365,14 @@ const AGENT_TOOLS: Record<string, Record<string, any>> = {
   studio_assistant: assistantTools,
 }
 
-/** instructions 按请求解析：prompt 文件（或默认）+ 技能全文拼接 */
+/** instructions 按请求解析：prompt 文件（或默认）+ 技能全文拼接（可按 skillSelection 过滤） */
 function buildInstructions(type: string) {
-  return async () => {
+  return async ({ requestContext }: { requestContext?: RequestContext } = {}) => {
     const defaults = DEFAULT_PROMPTS[type]
     const promptFile = await loadAgentPromptFile(type)
     const baseInstructions = promptFile?.instructions || defaults.instructions
-    const skillInstructions = await loadAgentSkills(type)
+    const selection = getSkillSelection(requestContext)
+    const skillInstructions = await loadAgentSkills(type, selection)
     return skillInstructions
       ? [baseInstructions, '', skillInstructions].join('\n')
       : baseInstructions

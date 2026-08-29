@@ -6,6 +6,7 @@ import { RequestContext } from '@mastra/core/request-context'
 import type { ImportCandidate } from './tools/import-tools.js'
 import type { StoryboardImportCandidate } from './tools/storyboard-import-tools.js'
 import type { AssistantRef } from '../services/assistant.js'
+import type { ResolvedSkillSelection } from './skills.js'
 
 export type AssistantAttachment = { url: string; name?: string }
 
@@ -39,6 +40,8 @@ export interface AgentRequestContextValues {
   importCandidateBuffer?: ImportCandidate[]
   /** 分镜导入解析阶段 */
   storyboardImportBuffer?: StoryboardImportCandidate[]
+  /** 本轮 Skill 选择（null/缺省 = 全量兼容注入） */
+  skillSelection?: ResolvedSkillSelection | null
 }
 
 export function buildAgentRequestContext(values: AgentRequestContextValues): RequestContext<AgentRequestContextValues> {
@@ -56,6 +59,7 @@ export function buildAgentRequestContext(values: AgentRequestContextValues): Req
   if (values.assistantAttachments?.length) rc.set('assistantAttachments', values.assistantAttachments)
   if (values.importCandidateBuffer) rc.set('importCandidateBuffer', values.importCandidateBuffer)
   if (values.storyboardImportBuffer) rc.set('storyboardImportBuffer', values.storyboardImportBuffer)
+  if (values.skillSelection) rc.set('skillSelection', values.skillSelection)
   return rc
 }
 
@@ -112,4 +116,9 @@ export function getImportCandidateBuffer(requestContext: RequestContext | undefi
 export function getStoryboardImportBuffer(requestContext: RequestContext | undefined): StoryboardImportCandidate[] | null {
   const v = requestContext?.get('storyboardImportBuffer' as never)
   return Array.isArray(v) ? (v as StoryboardImportCandidate[]) : null
+}
+
+export function getSkillSelection(requestContext: RequestContext | undefined): ResolvedSkillSelection | null {
+  const v = requestContext?.get('skillSelection' as never)
+  return v && typeof v === 'object' ? (v as ResolvedSkillSelection) : null
 }

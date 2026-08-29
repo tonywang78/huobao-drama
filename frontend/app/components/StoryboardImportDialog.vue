@@ -68,6 +68,7 @@
         </div>
 
         <div class="dialog-footer">
+          <AgentSkillPicker v-if="step === 'input'" agent-type="storyboard_importer" />
           <button type="button" class="btn" :disabled="parsing || confirming" @click="close">取消</button>
           <button
             v-if="step === 'input'"
@@ -100,6 +101,7 @@ import { computed, ref, watch } from 'vue'
 import { Loader2, Upload, X } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { episodeAPI } from '~/composables/useApi'
+import { readSkillSelectionPayload } from '~/composables/useAgent'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -162,6 +164,7 @@ async function startParse() {
     const res = await episodeAPI.importStoryboardsParse(props.episodeId, {
       content,
       filename: filename.value || undefined,
+      skill_selection: readSkillSelectionPayload('storyboard_importer'),
     })
     const list = Array.isArray(res?.candidates) ? res.candidates : (Array.isArray(res) ? res : [])
     if (!list.length) {

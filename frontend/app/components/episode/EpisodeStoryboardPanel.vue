@@ -11,21 +11,27 @@ const wb = useEpisodeWorkbenchInject()
               <span class="tag mono">{{ wb.sbs.length }} 段落 · {{ wb.totalDuration }}s</span>
               <span class="tag">{{ wb.effectiveVideoConfigLabel }}</span>
               <span v-if="wb.lockedFirstLastConfigLabel" class="tag">{{ wb.lockedFirstLastConfigLabel }}</span>
-              <div class="ml-auto flex gap-1">
+              <div class="ml-auto flex gap-1" style="align-items:center;flex-wrap:wrap">
                 <button class="btn btn-sm" :disabled="wb.rn || wb.creatingSb" @click="wb.storyboardImportOpen = true">
                   <Upload :size="11" />
                   导入
                 </button>
-                <button class="btn btn-sm" :disabled="wb.rn" @click="wb.doBreakdown">
-                  <Loader2 v-if="wb.rt === 'storyboard_breaker'" :size="11" class="animate-spin" />
-                  <svg v-else width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                  {{ wb.sbs.length ? '重新拆分' : '开始拆分' }}
-                </button>
-                <button class="btn btn-sm" :disabled="wb.videoPromptBatch.running || !wb.sbs.length" @click="wb.batchVideoPrompts">
-                  <Loader2 v-if="wb.videoPromptBatch.running" :size="11" class="animate-spin" />
-                  <svg v-else width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                  {{ wb.videoPromptBatch.running ? `提示词 ${wb.videoPromptBatch.completed}/${wb.videoPromptBatch.total}` : (wb.selectedSbIds.length ? `生成所选提示词(${wb.selectedSbIds.length})` : '批量视频提示词') }}
-                </button>
+                <div class="asp-action-group">
+                  <AgentSkillPicker agent-type="storyboard_breaker" label="拆分" />
+                  <button class="btn btn-sm" :disabled="wb.rn" @click="wb.doBreakdown">
+                    <Loader2 v-if="wb.rt === 'storyboard_breaker'" :size="11" class="animate-spin" />
+                    <svg v-else width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                    {{ wb.sbs.length ? '重新拆分' : '开始拆分' }}
+                  </button>
+                </div>
+                <div class="asp-action-group">
+                  <AgentSkillPicker agent-type="prompt_generator" label="提示词" />
+                  <button class="btn btn-sm" :disabled="wb.videoPromptBatch.running || !wb.sbs.length" @click="wb.batchVideoPrompts">
+                    <Loader2 v-if="wb.videoPromptBatch.running" :size="11" class="animate-spin" />
+                    <svg v-else width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                    {{ wb.videoPromptBatch.running ? `提示词 ${wb.videoPromptBatch.completed}/${wb.videoPromptBatch.total}` : (wb.selectedSbIds.length ? `生成所选提示词(${wb.selectedSbIds.length})` : '批量视频提示词') }}
+                  </button>
+                </div>
               </div>
             </div>
 

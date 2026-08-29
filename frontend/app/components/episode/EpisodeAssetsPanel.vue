@@ -24,6 +24,7 @@ const wb = useEpisodeWorkbenchInject()
                   </button>
                 </template>
                 <template v-else>
+                <AgentSkillPicker agent-type="extractor" />
                 <button
                   v-for="t in wb.EXTRACT_TARGETS"
                   :key="t.key"

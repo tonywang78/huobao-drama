@@ -243,6 +243,69 @@
               </button>
             </div>
 
+            <!-- Profiles -->
+            <div class="card" style="margin-bottom:16px;padding:14px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                <div style="font-weight:600;font-size:13px">预设 Profile</div>
+                <span class="dim" style="font-size:11px">工作台可一键套用，再手动微调</span>
+                <button class="btn btn-sm ml-auto" @click="startAddProfile">
+                  <Plus :size="12" /> 新增预设
+                </button>
+              </div>
+              <div v-if="!agentProfiles.length" class="dim" style="font-size:12px">暂无预设</div>
+              <div v-else class="skill-list">
+                <div v-for="p in agentProfiles" :key="p.id" class="card skill-card" style="margin:0 0 8px">
+                  <div class="skill-card-head" @click="toggleProfileEdit(p.id)">
+                    <div style="flex:1;min-width:0">
+                      <div style="font-weight:600;font-size:13px">{{ p.name }}</div>
+                      <div class="dim" style="font-size:11px">
+                        {{ p.id }} · {{ p.include_base !== false ? '底座开' : '底座关' }}
+                        · +{{ (p.skill_ids || []).length }} Skill
+                      </div>
+                    </div>
+                    <button class="btn btn-danger btn-icon btn-sm" style="margin-right:4px" @click.stop="profileToDelete = p.id">
+                      <Trash2 :size="13" />
+                    </button>
+                    <ChevronDown :size="14" :style="{ transform: editingProfile === p.id ? 'rotate(180deg)' : '', transition: '0.2s' }" />
+                  </div>
+                  <div v-if="editingProfile === p.id" class="skill-card-body" @click.stop>
+                    <label class="field">
+                      <span class="field-label">名称</span>
+                      <input v-model="profileForm.name" class="input" />
+                    </label>
+                    <label class="field">
+                      <span class="field-label">描述</span>
+                      <input v-model="profileForm.description" class="input" />
+                    </label>
+                    <label class="asp-toggle" style="display:flex;gap:6px;align-items:center;font-size:12px;margin:8px 0">
+                      <input v-model="profileForm.include_base" type="checkbox" />
+                      <span>注入底座 Skill</span>
+                    </label>
+                    <div class="field-label" style="margin-bottom:6px">可选 Skill</div>
+                    <label
+                      v-for="s in optionalSkillsForAgent"
+                      :key="s.id"
+                      style="display:flex;gap:8px;align-items:flex-start;font-size:12px;padding:4px 0"
+                    >
+                      <input
+                        type="checkbox"
+                        :checked="profileForm.skill_ids.includes(s.id)"
+                        @change="toggleProfileSkill(s.id)"
+                      />
+                      <span>{{ s.name }} <span class="dim">({{ s.id }})</span></span>
+                    </label>
+                    <div v-if="!optionalSkillsForAgent.length" class="dim" style="font-size:11px">暂无子 Skill，请先新增</div>
+                    <div style="display:flex;justify-content:flex-end;margin-top:10px">
+                      <button class="btn btn-primary btn-sm" :disabled="profileSaving" @click="saveProfile">
+                        <Loader2 v-if="profileSaving" :size="12" class="animate-spin" />
+                        保存预设
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <!-- 无 skill 提示 -->
             <div v-if="!currentSkills.length" class="card skills-empty">
               <div class="skills-empty-icon">
@@ -427,6 +490,33 @@
       </form>
     </div>
 
+    <!-- Add Profile Dialog -->
+    <div v-if="addProfileDialog" class="overlay" @click.self="addProfileDialog = false">
+      <form class="dialog skill-dialog" @submit.prevent="confirmAddProfile">
+        <div class="dialog-head">
+          <div class="dialog-title">新增预设 — {{ selectedAgentLabel }}</div>
+        </div>
+        <div class="dialog-body skill-dialog-body">
+          <label class="field">
+            <span class="field-label">预设 ID <span class="dim">(小写+连字符)</span></span>
+            <input v-model="newProfileForm.id" class="input" placeholder="如 fight-rewrite" />
+          </label>
+          <label class="field">
+            <span class="field-label">名称</span>
+            <input v-model="newProfileForm.name" class="input" placeholder="如 打斗改写" />
+          </label>
+          <label class="field">
+            <span class="field-label">描述</span>
+            <input v-model="newProfileForm.description" class="input" />
+          </label>
+        </div>
+        <div class="dialog-foot">
+          <button type="button" class="btn" @click="addProfileDialog = false">取消</button>
+          <button type="submit" class="btn btn-primary" :disabled="!newProfileForm.id || !newProfileForm.name">创建</button>
+        </div>
+      </form>
+    </div>
+
     <!-- Style Preset Dialog -->
     <div v-if="styleDialog" class="overlay" @click.self="styleDialog = false">
       <form class="dialog config-dialog" @submit.prevent="saveStyle">
@@ -482,6 +572,14 @@
       @confirm="confirmDelSkill"
       @cancel="skillToDelete = null"
     />
+    <ConfirmDialog
+      :open="!!profileToDelete"
+      title="删除预设"
+      :message="`确定删除预设「${profileToDelete}」？`"
+      :loading="deletingProfile"
+      @confirm="confirmDelProfile"
+      @cancel="profileToDelete = null"
+    />
   </div>
 </template>
 
@@ -490,7 +588,7 @@ import { Plus, Pencil, Trash2, FileText, ChevronDown, Check, Loader2, Bot, Cpu, 
 import BaseSelect from '~/components/BaseSelect.vue'
 import ComfyWorkflowBindings from '~/components/ComfyWorkflowBindings.vue'
 import { toast } from 'vue-sonner'
-import { aiConfigAPI, promptAPI, skillsAPI, stylePresetAPI } from '~/composables/useApi'
+import { aiConfigAPI, promptAPI, skillsAPI, skillProfilesAPI, stylePresetAPI } from '~/composables/useApi'
 import brandLogo from '~/assets/huobao-logo.png'
 
 const showBrandImage = ref(true)
@@ -997,9 +1095,133 @@ async function loadAllSkills() {
   catch (e) { toast.error(e.message) }
 }
 
+const agentProfiles = ref([])
+const editingProfile = ref(null)
+const profileForm = reactive({ name: '', description: '', include_base: true, skill_ids: [] })
+const profileSaving = ref(false)
+const addProfileDialog = ref(false)
+const newProfileForm = reactive({ id: '', name: '', description: '' })
+const profileToDelete = ref(null)
+const deletingProfile = ref(false)
+
+const AGENT_BASE_IDS = {
+  script_rewriter: ['script-rewriter'],
+  extractor: ['extractor'],
+  storyboard_breaker: ['storyboard-breaker'],
+  prompt_generator: [
+    'prompt-generator/character-prompt',
+    'prompt-generator/scene-prompt',
+    'prompt-generator/prop-prompt',
+    'prompt-generator/video-prompt',
+  ],
+  asset_importer: ['asset-importer'],
+  storyboard_importer: ['storyboard-importer'],
+  studio_assistant: ['studio-assistant'],
+}
+
+const optionalSkillsForAgent = computed(() => {
+  const base = new Set(AGENT_BASE_IDS[selectedAgent.value] || [])
+  return currentSkills.value.filter(s => !base.has(s.id) && !isVideoEngineSkill(s.id))
+})
+
+async function loadAgentProfiles() {
+  try {
+    agentProfiles.value = await skillProfilesAPI.list(selectedAgent.value) || []
+  } catch (e) {
+    agentProfiles.value = []
+    toast.error(e.message)
+  }
+}
+
 async function selectAgent(type) {
   selectedAgent.value = type
   editingSkill.value = null
+  editingProfile.value = null
+  await loadAgentProfiles()
+}
+
+function startAddProfile() {
+  newProfileForm.id = ''
+  newProfileForm.name = ''
+  newProfileForm.description = ''
+  addProfileDialog.value = true
+}
+
+async function confirmAddProfile() {
+  if (!newProfileForm.id || !newProfileForm.name) return
+  try {
+    await skillProfilesAPI.create(selectedAgent.value, {
+      id: newProfileForm.id,
+      name: newProfileForm.name,
+      description: newProfileForm.description,
+      include_base: true,
+      skill_ids: [],
+    })
+    addProfileDialog.value = false
+    await loadAgentProfiles()
+    toast.success('预设已创建')
+    editingProfile.value = newProfileForm.id
+    profileForm.name = newProfileForm.name
+    profileForm.description = newProfileForm.description || ''
+    profileForm.include_base = true
+    profileForm.skill_ids = []
+  } catch (e) {
+    toast.error(e.message)
+  }
+}
+
+function toggleProfileEdit(id) {
+  if (editingProfile.value === id) { editingProfile.value = null; return }
+  const p = agentProfiles.value.find(x => x.id === id)
+  if (!p) return
+  profileForm.name = p.name
+  profileForm.description = p.description || ''
+  profileForm.include_base = p.include_base !== false
+  profileForm.skill_ids = Array.isArray(p.skill_ids) ? [...p.skill_ids] : []
+  editingProfile.value = id
+}
+
+function toggleProfileSkill(id) {
+  const set = new Set(profileForm.skill_ids)
+  if (set.has(id)) set.delete(id)
+  else set.add(id)
+  profileForm.skill_ids = [...set]
+}
+
+async function saveProfile() {
+  if (!editingProfile.value) return
+  profileSaving.value = true
+  try {
+    await skillProfilesAPI.update(selectedAgent.value, editingProfile.value, {
+      name: profileForm.name,
+      description: profileForm.description,
+      include_base: profileForm.include_base,
+      skill_ids: profileForm.skill_ids,
+    })
+    await loadAgentProfiles()
+    toast.success('预设已保存')
+  } catch (e) {
+    toast.error(e.message)
+  } finally {
+    profileSaving.value = false
+  }
+}
+
+async function confirmDelProfile() {
+  const id = profileToDelete.value
+  if (!id) return
+  try {
+    deletingProfile.value = true
+    await skillProfilesAPI.del(selectedAgent.value, id)
+    if (editingProfile.value === id) editingProfile.value = null
+    await loadAgentProfiles()
+    profileToDelete.value = null
+    toast.success('预设已删除')
+  } catch (e) {
+    toast.error(e.message)
+  } finally {
+    deletingProfile.value = false
+  }
 }
 
 function startAddSkill() {
@@ -1147,7 +1369,7 @@ async function saveStyle() {
   } catch (e) { toast.error(e.message) }
 }
 
-onMounted(() => { loadCfgs(); loadAgents(); loadAllSkills(); loadStylePresets() })
+onMounted(() => { loadCfgs(); loadAgents(); loadAllSkills(); loadAgentProfiles(); loadStylePresets() })
 </script>
 
 <style scoped>

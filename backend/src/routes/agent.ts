@@ -4,6 +4,7 @@
 import { Hono } from 'hono'
 import { validAgentTypes } from '../agents/index.js'
 import { buildAgentRequestContext } from '../agents/context.js'
+import { parseRawSkillSelection, resolveSkillSelection } from '../agents/skills.js'
 import { mastra } from '../mastra/index.js'
 import { success, badRequest } from '../utils/response.js'
 import { logTaskError, logTaskPayload, logTaskProgress, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
@@ -34,10 +35,18 @@ app.post('/:type/chat', async (c) => {
   const body = await c.req.json()
   const { message, drama_id, episode_id } = body
 
+  let skillSelection
+  try {
+    skillSelection = resolveSkillSelection(agentType, parseRawSkillSelection(body))
+  } catch (err: any) {
+    return badRequest(c, err.message || 'Invalid skill_selection')
+  }
+
   logTaskStart('Agent', agentType, {
     dramaId: drama_id,
     episodeId: episode_id,
     message,
+    skillSelection: skillSelection || undefined,
   })
   logTaskPayload('Agent', `${agentType} input`, body)
 
@@ -57,6 +66,7 @@ app.post('/:type/chat', async (c) => {
     dramaId: drama_id,
     modelOverride: body.model || undefined,
     textConfigId: body.config_id || undefined,
+    skillSelection: skillSelection || undefined,
   })
 
   const startTime = performance.now()
@@ -70,7 +80,6 @@ app.post('/:type/chat', async (c) => {
     const elapsed = ((performance.now() - startTime) / 1000).toFixed(1)
     logTaskSuccess('Agent', agentType, { elapsedSeconds: elapsed })
 
-    // 收集所有 tool calls 和 results
     const toolCalls = result.toolCalls || []
     const toolResults = result.toolResults || []
     const normalizedToolCalls = toolCalls.map((tc: any) => ({

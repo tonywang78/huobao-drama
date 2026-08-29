@@ -4,6 +4,7 @@ import {
   MapPin, Play, Plus, X, ListTodo, Upload,
 } from 'lucide-vue-next'
 import { dramaAPI, episodeAPI, storyboardAPI, characterAPI, sceneAPI, propAPI, taskAPI, mergeAPI, aiConfigAPI, uploadAPI } from '~/composables/useApi'
+import { readSkillSelectionPayload } from '~/composables/useAgent'
 import { useAgent } from '~/composables/useAgent'
 import { useAssetImageHistory } from '~/composables/useAssetImageHistory'
 import { thumbOf, thumbFallback, posterOf } from '~/composables/useMedia'
@@ -624,11 +625,12 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     if (generatingPromptKeys.value.includes(key)) return ''
     generatingPromptKeys.value.push(key)
     try {
+      const skillSel = readSkillSelectionPayload('prompt_generator')
       const res = type === 'character'
-        ? await characterAPI.generatePrompt(id, epId.value, force, chatModelOverride(), chatConfigId())
+        ? await characterAPI.generatePrompt(id, epId.value, force, chatModelOverride(), chatConfigId(), skillSel)
         : type === 'scene'
-          ? await sceneAPI.generatePrompt(id, epId.value, force, chatModelOverride(), chatConfigId())
-          : await propAPI.generatePrompt(id, epId.value, force, chatModelOverride(), chatConfigId())
+          ? await sceneAPI.generatePrompt(id, epId.value, force, chatModelOverride(), chatConfigId(), skillSel)
+          : await propAPI.generatePrompt(id, epId.value, force, chatModelOverride(), chatConfigId(), skillSel)
       const fp = res?.final_prompt || res?.finalPrompt || ''
       if (fp) applyFinalPrompt(type, id, fp)
       return fp
@@ -1565,7 +1567,7 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     if (isExtracting(target) || !epId.value) return
     saveScr()
     extractingTargets.value.push(target)
-    episodeAPI.extract(epId.value, target, chatModelOverride(), chatConfigId())
+    episodeAPI.extract(epId.value, target, chatModelOverride(), chatConfigId(), readSkillSelectionPayload('extractor'))
       .then(() => pollExtractStatus(target))
       .catch(e => {
         extractingTargets.value = extractingTargets.value.filter(t => t !== target)
@@ -1664,7 +1666,13 @@ export function useEpisodeWorkbench(dramaId: number, episodeNumber: number) {
     if (!sbs.value.length) { toast.warning('请先拆分分镜'); return }
     const ids = selectedSbIds.value.length ? [...selectedSbIds.value] : undefined
     try {
-      const res = await episodeAPI.generateVideoPrompts(epId.value, chatModelOverride(), chatConfigId(), ids)
+      const res = await episodeAPI.generateVideoPrompts(
+        epId.value,
+        chatModelOverride(),
+        chatConfigId(),
+        ids,
+        readSkillSelectionPayload('prompt_generator'),
+      )
       if (!res?.total) {
         if (res?.already_running) {
           videoPromptBatch.value = { running: true, total: 0, completed: 0 }

@@ -4,6 +4,7 @@ import { db, getInsertId, schema } from '../db/index.js'
 import { success, badRequest, notFound, created, now } from '../utils/response.js'
 import { toSnakeCase, toSnakeCaseArray } from '../utils/transform.js'
 import { parseAssetImport, confirmAssetImport } from '../services/asset-import.js'
+import { parseRawSkillSelection, resolveSkillSelection } from '../agents/skills.js'
 
 const app = new Hono()
 
@@ -147,10 +148,11 @@ app.post('/:id/assets/import/parse', async (c) => {
       model: body.model || undefined,
       configId: body.config_id ?? undefined,
       episodeId: body.episode_id ? Number(body.episode_id) : undefined,
+      skillSelection: resolveSkillSelection('asset_importer', parseRawSkillSelection(body)),
     })
     return success(c, { candidates })
   } catch (err: any) {
-    return badRequest(c, err?.message || '����ʧ��')
+    return badRequest(c, err?.message || 'parse failed')
   }
 })
 

@@ -19,6 +19,7 @@ import prompts from './routes/prompts.js'
 import agent from './routes/agent.js'
 import merge from './routes/merge.js'
 import skills from './routes/skills.js'
+import skillProfiles from './routes/skillProfiles.js'
 import props from './routes/props.js'
 import assistant from './routes/assistant.js'
 import { requestLogger, errorHandler } from './middleware/logger.js'
@@ -56,6 +57,7 @@ api.route('/prompts', prompts)
 api.route('/agent', agent)
 api.route('/merge', merge)
 api.route('/skills', skills)
+api.route('/skill-profiles', skillProfiles)
 api.route('/props', props)
 api.route('/assistant', assistant)
 

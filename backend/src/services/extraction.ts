@@ -5,6 +5,7 @@
  */
 import { mastra } from '../mastra/index.js'
 import { buildAgentRequestContext } from '../agents/context.js'
+import type { ResolvedSkillSelection } from '../agents/skills.js'
 import { logTaskError, logTaskProgress, logTaskStart, logTaskSuccess } from '../utils/task-logger.js'
 
 export type ExtractTarget = 'characters' | 'scenes' | 'props'
@@ -28,7 +29,12 @@ const EXTRACT_MESSAGES: Record<ExtractTarget, string> = {
 }
 
 /** 启动异步提取任务（立即返回）；同集同类型已在运行时返回 false；可指定文本模型覆盖 */
-export function startExtraction(episodeId: number, dramaId: number, target: ExtractTarget, opts: { model?: string; configId?: number } = {}): boolean {
+export function startExtraction(
+  episodeId: number,
+  dramaId: number,
+  target: ExtractTarget,
+  opts: { model?: string; configId?: number; skillSelection?: ResolvedSkillSelection | null } = {},
+): boolean {
   const key = keyOf(episodeId, target)
   if (tasks.get(key)?.status === 'running') return false
 
@@ -44,11 +50,11 @@ export function startExtraction(episodeId: number, dramaId: number, target: Extr
       dramaId,
       modelOverride: opts.model || undefined,
       textConfigId: opts.configId || undefined,
+      skillSelection: opts.skillSelection || undefined,
     })
     return agent.generate([{ role: 'user', content: EXTRACT_MESSAGES[target] }], {
       maxSteps: 20,
       requestContext,
-      // 逐步打印 Agent 进展：调用了哪些工具、输出了什么
       onStepFinish: (step: any) => {
         const tools = (step?.toolCalls || [])
           .map((t: any) => t?.toolName || t?.payload?.toolName)
