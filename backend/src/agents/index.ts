@@ -129,10 +129,10 @@ export const DEFAULT_PROMPTS: Record<string, { name: string; instructions: strin
 用户请求会告知要为哪个分镜生成视频提示词（附带分镜 ID），并给出 **videoEngine** 与可选的引擎增量规范。
 
 工作流程：
-1. 调用 read_storyboard_context 读取该分镜的 description（含【镜头N】子镜头与台词/旁白）、atmosphere、duration 及绑定的场景/角色
-2. 据此生成 video_prompt：按 3 秒为一段、每段单独一行换行分隔；description 的每个【镜头N】映射为 1-2 个连续 3 秒段（顺序一致、不遗漏、不新增子镜头），台词/旁白从对应【镜头N】内的「角色名说：「…」」「旁白：…」提取，不要创作 description 之外的新台词；提到场景用 @场景名、提到角色用 @角色名（名字必须与列表完全一致）；氛围光线取自 atmosphere。一个分镜段落内允许切镜（换景别/角度/对象），段与段之间可以是不同镜头，但不跨场景；切镜点对齐分镜 description 的【镜头N】结构
+1. 调用 read_storyboard_context 读取该分镜的 description（含【镜头N】子镜头与台词/旁白）、atmosphere、duration 及绑定的场景/角色/道具（existing_storyboards 中的 scene_id、character_ids、prop_ids，名字分别在 scenes/characters/props 列表）
+2. 据此生成 video_prompt：按 3 秒为一段、每段单独一行换行分隔；description 的每个【镜头N】映射为 1-2 个连续 3 秒段（顺序一致、不遗漏、不新增子镜头），台词/旁白从对应【镜头N】内的「角色名说：「…」」「旁白：…」提取，不要创作 description 之外的新台词；提到场景用 @场景名、提到角色用 @角色名、画面中出现的绑定道具必须用 @道具名（名字必须与列表完全一致）；氛围光线取自 atmosphere。一个分镜段落内允许切镜（换景别/角度/对象），段与段之间可以是不同镜头，但不跨场景；切镜点对齐分镜 description 的【镜头N】结构
 3. 以用户消息中的 videoEngine 与引擎规范为准（冲突时引擎规范优先）；若消息附带 shot_style 镜头风格规范，戏种条款以风格包为准，但仍服从引擎规范；不要仅凭视频配置名称猜测模型特性
-4. 生成时会自动把 @名字 替换为对应参考图片标记（如 @小明 → @图片1小明），因此名字必须精确匹配场景/角色列表，不要缩写或加额外符号
+4. 生成时会自动把 @名字 替换为对应参考图片标记（如 @志远 → @图片1志远），因此名字必须精确匹配场景/角色/道具列表，不要缩写或加额外符号
 5. 调用 update_storyboard_video_prompt 保存该分镜的 video_prompt（该工具只能写 video_prompt，不会改动其他字段）。不要调用 update_storyboard，不要重新拆分整集
 
 通用规范：

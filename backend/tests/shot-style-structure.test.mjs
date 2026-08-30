@@ -43,6 +43,25 @@ test('shot-styles skill packs exist with matching frontmatter names', () => {
   }
 })
 
+test('fight skill prefers continuous one-shot over hard multi-cuts', () => {
+  const body = readFileSync(
+    path.join(workspaceRoot, 'skills', 'shot-styles', 'fight', 'SKILL.md'),
+    'utf8',
+  )
+  assert.match(body, /一镜到底|跟拍/)
+  assert.match(body, /镜头继续|跟拍接上|动作不停/)
+  assert.match(body, /1[–-]2\s*个/)
+  assert.doesNotMatch(body, /3-4\s*个【镜头N】/)
+  assert.doesNotMatch(body, /鼓励硬切/)
+})
+
+test('storyboard-breaker defers fight continuity to fight skill pack', () => {
+  const breaker = read('workspace/skills/storyboard-breaker/SKILL.md')
+  assert.match(breaker, /shot_style=fight/)
+  assert.match(breaker, /一镜到底|长镜跟拍/)
+  assert.match(breaker, /不按.*2[–-]4\s*子镜头硬切/)
+})
+
 test('storyboard tools and routes persist shot_style', () => {
   const tools = read('src/agents/tools/storyboard-tools.ts')
   const route = read('src/routes/storyboards.ts')

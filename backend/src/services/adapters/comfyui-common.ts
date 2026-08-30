@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import type { AIConfig, ProviderRequest } from './types'
 import { joinProviderUrl } from './url'
+import { logTaskProgress } from '../../utils/task-logger.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const WORKFLOW_DIR = join(__dirname, 'comfyui', 'workflows')
@@ -306,11 +307,47 @@ export async function uploadComfyImage(config: AIConfig, source: string): Promis
   return String(name)
 }
 
+/** 日志用：取 URL / 本地路径末段文件名 */
+function sourceBasename(source: string): string {
+  const raw = source.trim()
+  if (!raw) return ''
+  if (raw.startsWith('data:')) return 'data-url'
+  try {
+    const path = new URL(raw).pathname
+    return path.split('/').filter(Boolean).pop() || raw
+  } catch {
+    return raw.split(/[/\\]/).filter(Boolean).pop() || raw
+  }
+}
+
 export async function uploadReferenceImages(config: AIConfig, sources: string[]): Promise<string[]> {
   const names: string[] = []
+  const mappings: Array<{
+    index: number
+    imageToken: string
+    sourceFile: string
+    comfyFile: string
+  }> = []
+
   for (const src of sources) {
     if (!src?.trim()) continue
-    names.push(await uploadComfyImage(config, src.trim()))
+    const source = src.trim()
+    const comfyFile = await uploadComfyImage(config, source)
+    const index = names.length + 1
+    names.push(comfyFile)
+    mappings.push({
+      index,
+      imageToken: `@图片${index}`,
+      sourceFile: sourceBasename(source),
+      comfyFile,
+    })
+  }
+
+  if (mappings.length) {
+    logTaskProgress('ComfyUI', 'reference-image-map', {
+      count: mappings.length,
+      map: mappings,
+    })
   }
   return names
 }
@@ -330,6 +367,29 @@ export async function buildComfyPromptRequest(
   // 先占位符兜底，再 bindings 覆盖（UI 映射优先）
   let prompt = injectPlaceholders(workflow, { ...values, images: uploaded })
   prompt = applyBindings(prompt, settings.bindings, { ...values, images: uploaded })
+
+  if (uploaded.length) {
+    const bindings = settings.bindings || {}
+    const bindingMap = uploaded.map((comfyFile, i) => {
+      const key = `image_${i + 1}`
+      const target = bindings[key]
+      return {
+        index: i + 1,
+        imageToken: `@图片${i + 1}`,
+        placeholder: `IMAGE_${i + 1}`,
+        bindingKey: key,
+        nodeId: target?.nodeId || null,
+        input: target?.input || null,
+        sourceFile: referenceSources[i] ? sourceBasename(referenceSources[i]) : null,
+        comfyFile,
+      }
+    })
+    logTaskProgress('ComfyUI', 'prompt-image-binding', {
+      kind,
+      count: bindingMap.length,
+      map: bindingMap,
+    })
+  }
 
   return {
     url: joinProviderUrl(config.baseUrl, '', '/prompt'),
